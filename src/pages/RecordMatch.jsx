@@ -220,7 +220,7 @@ function ResultCard({ result, onReset }) {
           {winner} wins
         </div>
         <div style={{ marginTop: 4, color: T.textSec, fontSize: 14 }}>
-          {gameType} · Race to {result.raceTo}
+          {gameType}
         </div>
       </div>
 
@@ -302,7 +302,6 @@ export default function RecordMatch() {
   const [player1, setPlayer1] = useState(null);
   const [player2, setPlayer2] = useState(null);
   const [gameType, setGameType] = useState("Pool");
-  const [raceTo, setRaceTo] = useState(7);
   const [score1, setScore1] = useState("");
   const [score2, setScore2] = useState("");
   const [highBreak1, setHighBreak1] = useState("");
@@ -315,7 +314,7 @@ export default function RecordMatch() {
     setPlayer1(null); setPlayer2(null);
     setScore1(""); setScore2("");
     setHighBreak1(""); setHighBreak2("");
-    setGameType("Pool"); setRaceTo(7);
+    setGameType("Pool");
     setError(""); setResult(null);
   };
 
@@ -325,7 +324,6 @@ export default function RecordMatch() {
     const s1 = parseInt(score1), s2 = parseInt(score2);
     if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) return "Enter valid scores.";
     if (s1 === s2) return "Match cannot end in a draw.";
-    if (s1 !== raceTo && s2 !== raceTo) return `One score must equal Race To (${raceTo}).`;
     return null;
   };
 
@@ -339,8 +337,14 @@ export default function RecordMatch() {
       const p1Won = s1 > s2;
       const elo = calcElo(player1.elo_rating, player2.elo_rating, p1Won);
 
-      // insert match
-      const matchPayload = { game_type: gameType, format: "race_to", race_to: raceTo, played_at: new Date().toISOString(), is_deleted: false };
+      // insert match — race_to always saved as 1
+      const matchPayload = {
+        game_type: gameType,
+        format: "race_to",
+        race_to: 1,
+        played_at: new Date().toISOString(),
+        is_deleted: false,
+      };
       const { data: match, error: matchErr } = await supabase.from("matches").insert(matchPayload).select().single();
       if (matchErr) throw matchErr;
 
@@ -352,10 +356,9 @@ export default function RecordMatch() {
       const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
       if (mpErr) throw mpErr;
 
-      // update player stats helper
+      // update player stats
       const updatePlayer = async (player, won) => {
         const newElo = won ? elo.newA : elo.newB;
-        // re-fetch for streak accuracy
         const { data: fresh } = await supabase.from("players").select("*").eq("id", player.id).single();
         const p = fresh || player;
         const streak = won
@@ -365,7 +368,7 @@ export default function RecordMatch() {
         const longestLoss = !won ? Math.max(p.longest_loss_streak || 0, Math.abs(streak)) : (p.longest_loss_streak || 0);
 
         await supabase.from("players").update({
-          elo_rating: won ? elo.newA : elo.newB,
+          elo_rating: newElo,
           total_matches: (p.total_matches || 0) + 1,
           total_wins: (p.total_wins || 0) + (won ? 1 : 0),
           total_losses: (p.total_losses || 0) + (won ? 0 : 1),
@@ -383,7 +386,7 @@ export default function RecordMatch() {
         p1: player1, p2: player2,
         winner: p1Won ? player1.name : player2.name,
         score1: s1, score2: s2,
-        gameType, raceTo,
+        gameType,
         eloChange1: elo.changeA, eloChange2: elo.changeB,
         elo1Before: player1.elo_rating, elo1After: elo.newA,
         elo2Before: player2.elo_rating, elo2After: elo.newB,
@@ -457,16 +460,6 @@ export default function RecordMatch() {
                 </div>
               </div>
 
-              {/* Race to */}
-              <div style={{ marginBottom: 22 }}>
-                <Label>Race To</Label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[5, 7, 10].map(n => (
-                    <Pill key={n} active={raceTo === n} onClick={() => setRaceTo(n)}>{n}</Pill>
-                  ))}
-                </div>
-              </div>
-
               <Divider />
 
               {/* Scores */}
@@ -478,7 +471,7 @@ export default function RecordMatch() {
                       {player1 ? player1.name : "Player 1"}
                     </div>
                     <Input
-                      type="number" min="0" max={raceTo}
+                      type="number" min="0"
                       placeholder="0"
                       value={score1}
                       onChange={e => setScore1(e.target.value)}
@@ -491,7 +484,7 @@ export default function RecordMatch() {
                       {player2 ? player2.name : "Player 2"}
                     </div>
                     <Input
-                      type="number" min="0" max={raceTo}
+                      type="number" min="0"
                       placeholder="0"
                       value={score2}
                       onChange={e => setScore2(e.target.value)}
