@@ -84,14 +84,32 @@ function PlayerSearch({ label, value, onChange, exclude }) {
   const [loading, setLoading] = useState(false);
   const ref = useRef();
 
+  // committingRef: set to true on pointerdown of any dropdown item so that
+  // the input's onBlur doesn't close the dropdown before onClick fires.
+  // This is the key fix for mobile browsers where blur fires before touchend/click.
+  const committingRef = useRef(false);
+
+  // Use pointerdown (not mousedown) so this fires before blur on mobile too
   useEffect(() => {
-    const handleClick = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    const handler = e => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        committingRef.current = false;
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
   }, []);
 
   useEffect(() => {
-    if (!query.trim()) { setResults([]); setOpen(false); return; }
+    if (!query.trim()) {
+      setResults([]);
+      setOpen(false);
+      return;
+    }
+    // Open immediately so the dropdown (with loading state) appears at once —
+    // this way the add button area is visible even while fetching.
+    setOpen(true);
     const t = setTimeout(async () => {
       setLoading(true);
       const { data } = await supabase
@@ -100,13 +118,13 @@ function PlayerSearch({ label, value, onChange, exclude }) {
         .ilike("name", `%${query}%`)
         .limit(6);
       setResults(data || []);
-      setOpen(true);
       setLoading(false);
     }, 250);
     return () => clearTimeout(t);
   }, [query]);
 
   const select = (player) => {
+    committingRef.current = false;
     onChange(player);
     setQuery(player.name);
     setOpen(false);
@@ -117,14 +135,28 @@ function PlayerSearch({ label, value, onChange, exclude }) {
     if (!name) return;
     const { data, error } = await supabase
       .from("players")
-      .insert({ name, elo_rating: 1200, total_matches: 0, total_wins: 0, total_losses: 0, current_streak: 0, longest_win_streak: 0, longest_loss_streak: 0 })
+      .insert({
+        name, elo_rating: 1200, total_matches: 0, total_wins: 0,
+        total_losses: 0, current_streak: 0,
+        longest_win_streak: 0, longest_loss_streak: 0,
+      })
       .select()
       .single();
     if (!error && data) select(data);
   };
 
   const filtered = results.filter(r => !exclude || r.id !== exclude.id);
-  const exactMatch = filtered.some(r => r.name.toLowerCase() === query.trim().toLowerCase());
+  const exactMatch = filtered.some(
+    r => r.name.toLowerCase() === query.trim().toLowerCase()
+  );
+
+  // The add button should appear whenever:
+  // • dropdown is open
+  // • no player is already selected
+  // • there's a non-empty query
+  // • it's not an exact match of an existing result
+  // • we're not still loading (avoids flash before results arrive)
+  const showAddButton = open && !value && !loading && query.trim() && !exactMatch;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -133,17 +165,32 @@ function PlayerSearch({ label, value, onChange, exclude }) {
         <Input
           placeholder="Search player name…"
           value={value ? value.name : query}
-          onChange={e => { setQuery(e.target.value); if (value) onChange(null); }}
-          onFocus={() => query && setOpen(true)}
+          onChange={e => {
+            setQuery(e.target.value);
+            if (value) onChange(null);
+          }}
+          onFocus={() => {
+            if (query.trim()) setOpen(true);
+          }}
+          onBlur={() => {
+            // Only close the dropdown if the user isn't tapping a dropdown item.
+            // committingRef is set true on pointerdown of each item, which fires
+            // before onBlur on all browsers including mobile Safari/Chrome.
+            if (!committingRef.current) setOpen(false);
+          }}
         />
         {value && (
-          <button onClick={() => { onChange(null); setQuery(""); }} style={{
-            position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-            background: "none", border: "none", color: T.textMuted, cursor: "pointer",
-            fontSize: 18, lineHeight: 1, padding: 2,
-          }}>×</button>
+          <button
+            onPointerDown={() => { onChange(null); setQuery(""); }}
+            style={{
+              position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+              background: "none", border: "none", color: T.textMuted, cursor: "pointer",
+              fontSize: 18, lineHeight: 1, padding: 2,
+            }}
+          >×</button>
         )}
       </div>
+
       {open && !value && (
         <div style={{
           position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
@@ -152,14 +199,22 @@ function PlayerSearch({ label, value, onChange, exclude }) {
           boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
         }}>
           {loading && (
-            <div style={{ padding: "12px 14px", color: T.textMuted, fontSize: 13 }}>Searching…</div>
+            <div style={{ padding: "12px 14px", color: T.textMuted, fontSize: 13 }}>
+              Searching…
+            </div>
           )}
+
           {!loading && filtered.map(p => (
-            <div key={p.id} onClick={() => select(p)} style={{
-              padding: "11px 14px", cursor: "pointer", borderBottom: `1px solid ${T.border}`,
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              transition: "background 0.15s",
-            }}
+            <div
+              key={p.id}
+              onPointerDown={() => { committingRef.current = true; }}
+              onClick={() => select(p)}
+              style={{
+                padding: "11px 14px", cursor: "pointer",
+                borderBottom: `1px solid ${T.border}`,
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                transition: "background 0.15s",
+              }}
               onMouseEnter={e => (e.currentTarget.style.background = T.surface)}
               onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             >
@@ -167,21 +222,31 @@ function PlayerSearch({ label, value, onChange, exclude }) {
               <span style={{ color: T.textMuted, fontSize: 12 }}>ELO {p.elo_rating}</span>
             </div>
           ))}
-          {!loading && !exactMatch && query.trim() && (
-            <div onClick={addNew} style={{
-              padding: "11px 14px", cursor: "pointer", color: T.green,
-              fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
-              transition: "background 0.15s",
-            }}
+
+          {!loading && filtered.length === 0 && (
+            <div style={{ padding: "10px 14px", color: T.textMuted, fontSize: 13 }}>
+              No players found
+            </div>
+          )}
+
+          {/* Add button — always rendered last in the dropdown when conditions are met */}
+          {showAddButton && (
+            <div
+              onPointerDown={() => { committingRef.current = true; }}
+              onClick={() => addNew()}
+              style={{
+                padding: "11px 14px", cursor: "pointer", color: T.green,
+                fontSize: 13, fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 8,
+                borderTop: filtered.length > 0 ? `1px solid ${T.border}` : "none",
+                transition: "background 0.15s",
+              }}
               onMouseEnter={e => (e.currentTarget.style.background = T.greenGlow)}
               onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             >
               <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
               Add "{query.trim()}" as new player
             </div>
-          )}
-          {!loading && filtered.length === 0 && !query.trim() && (
-            <div style={{ padding: "12px 14px", color: T.textMuted, fontSize: 13 }}>No players found</div>
           )}
         </div>
       )}
@@ -337,7 +402,6 @@ export default function RecordMatch() {
       const p1Won = s1 > s2;
       const elo = calcElo(player1.elo_rating, player2.elo_rating, p1Won);
 
-      // insert match — race_to always saved as 1
       const matchPayload = {
         game_type: gameType,
         format: "race_to",
@@ -348,7 +412,6 @@ export default function RecordMatch() {
       const { data: match, error: matchErr } = await supabase.from("matches").insert(matchPayload).select().single();
       if (matchErr) throw matchErr;
 
-      // insert match_players
       const mpRows = [
         { match_id: match.id, player_id: player1.id, score: s1, is_winner: p1Won, elo_before: player1.elo_rating, elo_after: elo.newA, elo_change: elo.changeA, ...(gameType === "Snooker" && highBreak1 !== "" ? { highest_break: parseInt(highBreak1) } : {}) },
         { match_id: match.id, player_id: player2.id, score: s2, is_winner: !p1Won, elo_before: player2.elo_rating, elo_after: elo.newB, elo_change: elo.changeB, ...(gameType === "Snooker" && highBreak2 !== "" ? { highest_break: parseInt(highBreak2) } : {}) },
@@ -356,7 +419,6 @@ export default function RecordMatch() {
       const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
       if (mpErr) throw mpErr;
 
-      // update player stats
       const updatePlayer = async (player, won) => {
         const newElo = won ? elo.newA : elo.newB;
         const { data: fresh } = await supabase.from("players").select("*").eq("id", player.id).single();
@@ -399,7 +461,6 @@ export default function RecordMatch() {
     }
   };
 
-  // ── render ────────────────────────────────────────────────────────────────
   return (
     <div style={{
       minHeight: "100vh", background: T.bg, display: "flex",
