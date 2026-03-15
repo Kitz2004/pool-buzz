@@ -83,11 +83,12 @@ const styles = {
     transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
     position: 'relative',
   },
-  cardTopBar: (gameType) => ({
+  // isSnooker now receives the already-computed boolean
+  cardTopBar: (isSnooker) => ({
     height: '3px',
-    background: gameType === 'Snooker'
-      ? 'linear-gradient(90deg, #22c55e, #16a34a)'
-      : 'linear-gradient(90deg, #38bdf8, #2563eb)',
+    background: isSnooker
+      ? 'linear-gradient(90deg, #f43f5e, #be123c)'   // red for snooker
+      : 'linear-gradient(90deg, #38bdf8, #2563eb)',   // blue for pool
     width: '100%',
   }),
   cardInner: {
@@ -99,19 +100,20 @@ const styles = {
     justifyContent: 'space-between',
     marginBottom: '14px',
   },
-  gameTypeBadge: (gameType) => ({
+  // isSnooker boolean passed in directly
+  gameTypeBadge: (isSnooker) => ({
     fontSize: '10px',
     fontWeight: '700',
     letterSpacing: '0.12em',
     textTransform: 'uppercase',
     padding: '3px 10px',
     borderRadius: '20px',
-    background: gameType === 'Snooker'
-      ? 'rgba(34,197,94,0.13)'
-      : 'rgba(56,189,248,0.12)',
-    color: gameType === 'Snooker' ? '#4ade80' : '#38bdf8',
-    border: gameType === 'Snooker'
-      ? '1px solid rgba(74,222,128,0.25)'
+    background: isSnooker
+      ? 'rgba(244,63,94,0.13)'        // red tint for snooker
+      : 'rgba(56,189,248,0.12)',       // blue tint for pool
+    color: isSnooker ? '#fb7185' : '#38bdf8',
+    border: isSnooker
+      ? '1px solid rgba(244,63,94,0.30)'
       : '1px solid rgba(56,189,248,0.22)',
   }),
   dateTime: {
@@ -183,7 +185,6 @@ const styles = {
     fontWeight: '300',
     margin: '0 2px',
   },
-  // Pool winner badge — replaces the score pill for Pool matches
   poolWinnerBadge: {
     display: 'flex',
     alignItems: 'center',
@@ -325,13 +326,17 @@ export default function History() {
     fetchMatches();
   }, []);
 
+  // Normalise game_type to lowercase once so every comparison is case-insensitive.
+  // Handles values saved as "snooker", "Snooker", "SNOOKER", etc.
+  const normalise = (gt) => (gt || '').toLowerCase();
+
   const filtered = matches.filter((m) => {
     if (filter === 'All') return true;
-    return m.game_type === filter;
+    return normalise(m.game_type) === filter.toLowerCase();
   });
 
-  const poolCount = matches.filter((m) => m.game_type === 'Pool').length;
-  const snookerCount = matches.filter((m) => m.game_type === 'Snooker').length;
+  const poolCount    = matches.filter((m) => normalise(m.game_type) === 'pool').length;
+  const snookerCount = matches.filter((m) => normalise(m.game_type) === 'snooker').length;
 
   return (
     <div style={styles.root}>
@@ -411,17 +416,21 @@ export default function History() {
           const sorted = [...players].sort((a, b) => (b.is_winner ? 1 : 0) - (a.is_winner ? 1 : 0));
           const p1 = sorted[0];
           const p2 = sorted[1];
-          const isSnooker = match.game_type === 'Snooker';
+
+          // Single normalised check — works regardless of how the value was stored
+          const isSnooker = normalise(match.game_type) === 'snooker';
+
           const winner = sorted.find((p) => p.is_winner);
           const winnerName = winner?.players?.name ?? `Player ${winner?.player_id}`;
 
           return (
             <div key={match.id} style={styles.card}>
-              <div style={styles.cardTopBar(match.game_type)} />
+              {/* Top colour bar: red for snooker, blue for pool */}
+              <div style={styles.cardTopBar(isSnooker)} />
               <div style={styles.cardInner}>
                 {/* Meta row */}
                 <div style={styles.cardMeta}>
-                  <span style={styles.gameTypeBadge(match.game_type)}>
+                  <span style={styles.gameTypeBadge(isSnooker)}>
                     {isSnooker ? '🔴 Snooker' : '🎱 Pool'}
                   </span>
                   <span style={styles.dateTime}>
@@ -443,7 +452,6 @@ export default function History() {
                           {formatEloChange(p1.elo_change)} ELO
                         </span>
                       )}
-                      {/* Snooker: always show highest break (dash if missing) */}
                       {isSnooker && (
                         <span style={styles.highestBreak}>
                           ⚡ Break: {p1.highest_break ?? '—'}
@@ -482,7 +490,6 @@ export default function History() {
                           {formatEloChange(p2.elo_change)} ELO
                         </span>
                       )}
-                      {/* Snooker: always show highest break (dash if missing) */}
                       {isSnooker && (
                         <span style={styles.highestBreak}>
                           ⚡ Break: {p2.highest_break ?? '—'}
