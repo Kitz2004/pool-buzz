@@ -26,6 +26,7 @@ const T = {
   greenDim:  "#00c88a",
   greenGlow: "rgba(0,229,160,0.15)",
   red:       "#ff4d6d",
+  redGlow:   "rgba(255,77,109,0.15)",
   gold:      "#ffd166",
   textPrim:  "#f0f4ff",
   textSec:   "#8892a4",
@@ -83,13 +84,8 @@ function PlayerSearch({ label, value, onChange, exclude }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const ref = useRef();
-
-  // committingRef: set to true on pointerdown of any dropdown item so that
-  // the input's onBlur doesn't close the dropdown before onClick fires.
-  // This is the key fix for mobile browsers where blur fires before touchend/click.
   const committingRef = useRef(false);
 
-  // Use pointerdown (not mousedown) so this fires before blur on mobile too
   useEffect(() => {
     const handler = e => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -107,8 +103,6 @@ function PlayerSearch({ label, value, onChange, exclude }) {
       setOpen(false);
       return;
     }
-    // Open immediately so the dropdown (with loading state) appears at once —
-    // this way the add button area is visible even while fetching.
     setOpen(true);
     const t = setTimeout(async () => {
       setLoading(true);
@@ -149,13 +143,6 @@ function PlayerSearch({ label, value, onChange, exclude }) {
   const exactMatch = filtered.some(
     r => r.name.toLowerCase() === query.trim().toLowerCase()
   );
-
-  // The add button should appear whenever:
-  // • dropdown is open
-  // • no player is already selected
-  // • there's a non-empty query
-  // • it's not an exact match of an existing result
-  // • we're not still loading (avoids flash before results arrive)
   const showAddButton = open && !value && !loading && query.trim() && !exactMatch;
 
   return (
@@ -169,15 +156,8 @@ function PlayerSearch({ label, value, onChange, exclude }) {
             setQuery(e.target.value);
             if (value) onChange(null);
           }}
-          onFocus={() => {
-            if (query.trim()) setOpen(true);
-          }}
-          onBlur={() => {
-            // Only close the dropdown if the user isn't tapping a dropdown item.
-            // committingRef is set true on pointerdown of each item, which fires
-            // before onBlur on all browsers including mobile Safari/Chrome.
-            if (!committingRef.current) setOpen(false);
-          }}
+          onFocus={() => { if (query.trim()) setOpen(true); }}
+          onBlur={() => { if (!committingRef.current) setOpen(false); }}
         />
         {value && (
           <button
@@ -203,7 +183,6 @@ function PlayerSearch({ label, value, onChange, exclude }) {
               Searching…
             </div>
           )}
-
           {!loading && filtered.map(p => (
             <div
               key={p.id}
@@ -222,14 +201,11 @@ function PlayerSearch({ label, value, onChange, exclude }) {
               <span style={{ color: T.textMuted, fontSize: 12 }}>ELO {p.elo_rating}</span>
             </div>
           ))}
-
           {!loading && filtered.length === 0 && (
             <div style={{ padding: "10px 14px", color: T.textMuted, fontSize: 13 }}>
               No players found
             </div>
           )}
-
-          {/* Add button — always rendered last in the dropdown when conditions are met */}
           {showAddButton && (
             <div
               onPointerDown={() => { committingRef.current = true; }}
@@ -254,6 +230,72 @@ function PlayerSearch({ label, value, onChange, exclude }) {
   );
 }
 
+// ─── POOL WIN BUTTONS ────────────────────────────────────────────────────────
+function PoolWinButtons({ player1, player2, winner, onSelect }) {
+  const buttons = [
+    { key: "p1", label: player1 ? player1.name : "Player 1", color: T.green, glow: T.greenGlow },
+    { key: "p2", label: player2 ? player2.name : "Player 2", color: T.red,   glow: T.redGlow   },
+  ];
+
+  return (
+    <div>
+      <Label>Winner</Label>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {buttons.map(({ key, label, color, glow }) => {
+          const active = winner === key;
+          return (
+            <button
+              key={key}
+              onClick={() => onSelect(active ? null : key)}
+              style={{
+                padding: "20px 12px",
+                borderRadius: T.radius,
+                border: `2px solid ${active ? color : T.border}`,
+                background: active ? glow : T.surface,
+                color: active ? color : T.textSec,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                fontWeight: 800,
+                fontSize: 14,
+                letterSpacing: "0.02em",
+                textAlign: "center",
+                transition: "all 0.18s",
+                boxShadow: active ? `0 0 20px ${glow}` : "none",
+                lineHeight: 1.3,
+              }}
+              onMouseEnter={e => {
+                if (!active) {
+                  e.currentTarget.style.borderColor = color;
+                  e.currentTarget.style.color = color;
+                }
+              }}
+              onMouseLeave={e => {
+                if (!active) {
+                  e.currentTarget.style.borderColor = T.border;
+                  e.currentTarget.style.color = T.textSec;
+                }
+              }}
+            >
+              <div style={{ fontSize: 22, marginBottom: 8 }}>
+                {active ? "🏆" : "🎱"}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>
+                {label}
+              </div>
+              <div style={{
+                fontSize: 10, fontWeight: 600, letterSpacing: "0.1em",
+                textTransform: "uppercase", opacity: 0.7, marginTop: 4,
+              }}>
+                Wins
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── RESULT CARD ─────────────────────────────────────────────────────────────
 function ResultCard({ result, onReset }) {
   const { p1, p2, winner, score1, score2, gameType, highBreak1, highBreak2 } = result;
@@ -272,7 +314,6 @@ function ResultCard({ result, onReset }) {
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       <style>{`@keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }`}</style>
 
-      {/* Header */}
       <div style={{
         textAlign: "center", marginBottom: 24,
         padding: "20px 0 16px",
@@ -289,7 +330,6 @@ function ResultCard({ result, onReset }) {
         </div>
       </div>
 
-      {/* Score */}
       <div style={{
         display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12,
         alignItems: "center", marginBottom: 20,
@@ -322,7 +362,6 @@ function ResultCard({ result, onReset }) {
         <div style={{ textAlign: "center", color: T.textMuted, fontWeight: 800, fontSize: 18 }}>VS</div>
       </div>
 
-      {/* ELO summary */}
       <div style={{
         background: T.surface, borderRadius: T.radiusSm, padding: "14px 16px",
         marginBottom: 24, fontSize: 13,
@@ -367,16 +406,34 @@ export default function RecordMatch() {
   const [player1, setPlayer1] = useState(null);
   const [player2, setPlayer2] = useState(null);
   const [gameType, setGameType] = useState("Pool");
+
+  // Pool: track which player won ("p1" | "p2" | null)
+  const [poolWinner, setPoolWinner] = useState(null);
+
+  // Snooker: score inputs
   const [score1, setScore1] = useState("");
   const [score2, setScore2] = useState("");
+
+  // Snooker: highest break inputs
   const [highBreak1, setHighBreak1] = useState("");
   const [highBreak2, setHighBreak2] = useState("");
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
 
+  // Reset pool winner when game type changes
+  const handleGameType = (type) => {
+    setGameType(type);
+    setPoolWinner(null);
+    setScore1(""); setScore2("");
+    setHighBreak1(""); setHighBreak2("");
+    setError("");
+  };
+
   const reset = () => {
     setPlayer1(null); setPlayer2(null);
+    setPoolWinner(null);
     setScore1(""); setScore2("");
     setHighBreak1(""); setHighBreak2("");
     setGameType("Pool");
@@ -386,9 +443,14 @@ export default function RecordMatch() {
   const validate = () => {
     if (!player1 || !player2) return "Please select both players.";
     if (player1.id === player2.id) return "Players must be different.";
-    const s1 = parseInt(score1), s2 = parseInt(score2);
-    if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) return "Enter valid scores.";
-    if (s1 === s2) return "Match cannot end in a draw.";
+
+    if (gameType === "Pool") {
+      if (!poolWinner) return "Please select a winner.";
+    } else {
+      const s1 = parseInt(score1), s2 = parseInt(score2);
+      if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) return "Enter valid scores.";
+      if (s1 === s2) return "Match cannot end in a draw.";
+    }
     return null;
   };
 
@@ -398,7 +460,16 @@ export default function RecordMatch() {
     setError(""); setSaving(true);
 
     try {
-      const s1 = parseInt(score1), s2 = parseInt(score2);
+      // Resolve final scores & winner
+      let s1, s2;
+      if (gameType === "Pool") {
+        s1 = poolWinner === "p1" ? 1 : 0;
+        s2 = poolWinner === "p2" ? 1 : 0;
+      } else {
+        s1 = parseInt(score1);
+        s2 = parseInt(score2);
+      }
+
       const p1Won = s1 > s2;
       const elo = calcElo(player1.elo_rating, player2.elo_rating, p1Won);
 
@@ -413,8 +484,18 @@ export default function RecordMatch() {
       if (matchErr) throw matchErr;
 
       const mpRows = [
-        { match_id: match.id, player_id: player1.id, score: s1, is_winner: p1Won, elo_before: player1.elo_rating, elo_after: elo.newA, elo_change: elo.changeA, ...(gameType === "Snooker" && highBreak1 !== "" ? { highest_break: parseInt(highBreak1) } : {}) },
-        { match_id: match.id, player_id: player2.id, score: s2, is_winner: !p1Won, elo_before: player2.elo_rating, elo_after: elo.newB, elo_change: elo.changeB, ...(gameType === "Snooker" && highBreak2 !== "" ? { highest_break: parseInt(highBreak2) } : {}) },
+        {
+          match_id: match.id, player_id: player1.id, score: s1,
+          is_winner: p1Won, elo_before: player1.elo_rating,
+          elo_after: elo.newA, elo_change: elo.changeA,
+          ...(gameType === "Snooker" && highBreak1 !== "" ? { highest_break: parseInt(highBreak1) } : {}),
+        },
+        {
+          match_id: match.id, player_id: player2.id, score: s2,
+          is_winner: !p1Won, elo_before: player2.elo_rating,
+          elo_after: elo.newB, elo_change: elo.changeB,
+          ...(gameType === "Snooker" && highBreak2 !== "" ? { highest_break: parseInt(highBreak2) } : {}),
+        },
       ];
       const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
       if (mpErr) throw mpErr;
@@ -438,7 +519,6 @@ export default function RecordMatch() {
           longest_win_streak: longestWin,
           longest_loss_streak: longestLoss,
         }).eq("id", player.id);
-        return newElo;
       };
 
       await updatePlayer(player1, p1Won);
@@ -516,77 +596,92 @@ export default function RecordMatch() {
               <div style={{ marginBottom: 20 }}>
                 <Label>Game Type</Label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <Pill active={gameType === "Pool"} onClick={() => setGameType("Pool")}>🎱 Pool</Pill>
-                  <Pill active={gameType === "Snooker"} onClick={() => setGameType("Snooker")}>🔴 Snooker</Pill>
+                  <Pill active={gameType === "Pool"} onClick={() => handleGameType("Pool")}>🎱 Pool</Pill>
+                  <Pill active={gameType === "Snooker"} onClick={() => handleGameType("Snooker")}>🔴 Snooker</Pill>
                 </div>
               </div>
 
               <Divider />
 
-              {/* Scores */}
-              <div style={{ marginBottom: gameType === "Snooker" ? 16 : 24 }}>
-                <Label>Score</Label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
-                      {player1 ? player1.name : "Player 1"}
-                    </div>
-                    <Input
-                      type="number" min="0"
-                      placeholder="0"
-                      value={score1}
-                      onChange={e => setScore1(e.target.value)}
-                      style={{ textAlign: "center", fontSize: 20, fontWeight: 800, padding: "12px 8px" }}
-                    />
-                  </div>
-                  <div style={{ color: T.textMuted, fontWeight: 700, paddingTop: 20 }}>–</div>
-                  <div>
-                    <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
-                      {player2 ? player2.name : "Player 2"}
-                    </div>
-                    <Input
-                      type="number" min="0"
-                      placeholder="0"
-                      value={score2}
-                      onChange={e => setScore2(e.target.value)}
-                      style={{ textAlign: "center", fontSize: 20, fontWeight: 800, padding: "12px 8px" }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Highest break — Snooker only */}
-              {gameType === "Snooker" && (
+              {/* ── POOL: big winner buttons ── */}
+              {gameType === "Pool" && (
                 <div style={{ marginBottom: 24 }}>
-                  <Label>Highest Break</Label>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
-                        {player1 ? player1.name : "Player 1"}
+                  <PoolWinButtons
+                    player1={player1}
+                    player2={player2}
+                    winner={poolWinner}
+                    onSelect={setPoolWinner}
+                  />
+                </div>
+              )}
+
+              {/* ── SNOOKER: score inputs + highest break ── */}
+              {gameType === "Snooker" && (
+                <>
+                  {/* Scores */}
+                  <div style={{ marginBottom: 20 }}>
+                    <Label>Score</Label>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
+                          {player1 ? player1.name : "Player 1"}
+                        </div>
+                        <Input
+                          type="number" min="0"
+                          placeholder="0"
+                          value={score1}
+                          onChange={e => setScore1(e.target.value)}
+                          style={{ textAlign: "center", fontSize: 20, fontWeight: 800, padding: "12px 8px" }}
+                        />
                       </div>
-                      <Input
-                        type="number" min="0" max="147"
-                        placeholder="0"
-                        value={highBreak1}
-                        onChange={e => setHighBreak1(e.target.value)}
-                        style={{ textAlign: "center", padding: "10px 8px" }}
-                      />
-                    </div>
-                    <div style={{ paddingTop: 20, color: T.textMuted, fontWeight: 700 }}>–</div>
-                    <div>
-                      <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
-                        {player2 ? player2.name : "Player 2"}
+                      <div style={{ color: T.textMuted, fontWeight: 700, paddingTop: 20 }}>–</div>
+                      <div>
+                        <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
+                          {player2 ? player2.name : "Player 2"}
+                        </div>
+                        <Input
+                          type="number" min="0"
+                          placeholder="0"
+                          value={score2}
+                          onChange={e => setScore2(e.target.value)}
+                          style={{ textAlign: "center", fontSize: 20, fontWeight: 800, padding: "12px 8px" }}
+                        />
                       </div>
-                      <Input
-                        type="number" min="0" max="147"
-                        placeholder="0"
-                        value={highBreak2}
-                        onChange={e => setHighBreak2(e.target.value)}
-                        style={{ textAlign: "center", padding: "10px 8px" }}
-                      />
                     </div>
                   </div>
-                </div>
+
+                  {/* Highest break */}
+                  <div style={{ marginBottom: 24 }}>
+                    <Label>Highest Break</Label>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
+                          {player1 ? player1.name : "Player 1"}
+                        </div>
+                        <Input
+                          type="number" min="0" max="147"
+                          placeholder="0"
+                          value={highBreak1}
+                          onChange={e => setHighBreak1(e.target.value)}
+                          style={{ textAlign: "center", padding: "10px 8px" }}
+                        />
+                      </div>
+                      <div style={{ paddingTop: 20, color: T.textMuted, fontWeight: 700 }}>–</div>
+                      <div>
+                        <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
+                          {player2 ? player2.name : "Player 2"}
+                        </div>
+                        <Input
+                          type="number" min="0" max="147"
+                          placeholder="0"
+                          value={highBreak2}
+                          onChange={e => setHighBreak2(e.target.value)}
+                          style={{ textAlign: "center", padding: "10px 8px" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
 
               {/* Error */}

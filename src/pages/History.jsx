@@ -183,6 +183,35 @@ const styles = {
     fontWeight: '300',
     margin: '0 2px',
   },
+  // Pool winner badge — replaces the score pill for Pool matches
+  poolWinnerBadge: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '7px',
+    background: 'rgba(56,189,248,0.08)',
+    border: '1px solid rgba(56,189,248,0.20)',
+    borderRadius: '12px',
+    padding: '7px 14px',
+    margin: '0 12px',
+    flexShrink: 0,
+  },
+  poolWinnerName: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#38bdf8',
+    letterSpacing: '-0.01em',
+    whiteSpace: 'nowrap',
+  },
+  poolWBadge: {
+    fontSize: '10px',
+    fontWeight: '800',
+    letterSpacing: '0.1em',
+    color: '#0f172a',
+    background: '#38bdf8',
+    borderRadius: '6px',
+    padding: '2px 6px',
+    lineHeight: 1.4,
+  },
   emptyState: {
     textAlign: 'center',
     padding: '80px 20px',
@@ -383,6 +412,8 @@ export default function History() {
           const p1 = sorted[0];
           const p2 = sorted[1];
           const isSnooker = match.game_type === 'Snooker';
+          const winner = sorted.find((p) => p.is_winner);
+          const winnerName = winner?.players?.name ?? `Player ${winner?.player_id}`;
 
           return (
             <div key={match.id} style={styles.card}>
@@ -398,7 +429,7 @@ export default function History() {
                   </span>
                 </div>
 
-                {/* Players + Score */}
+                {/* Players + Score/Winner */}
                 <div style={styles.playersRow}>
                   {/* Player 1 (winner) — left aligned */}
                   {p1 && (
@@ -412,24 +443,32 @@ export default function History() {
                           {formatEloChange(p1.elo_change)} ELO
                         </span>
                       )}
-                      {isSnooker && p1.highest_break != null && (
+                      {/* Snooker: always show highest break (dash if missing) */}
+                      {isSnooker && (
                         <span style={styles.highestBreak}>
-                          ⚡ Break: {p1.highest_break}
+                          ⚡ Break: {p1.highest_break ?? '—'}
                         </span>
                       )}
                     </div>
                   )}
 
-                  {/* Score pill */}
-                  <div style={styles.scorePill}>
-                    <span style={styles.scoreNum(p1?.is_winner)}>
-                      {p1?.score ?? '?'}
-                    </span>
-                    <span style={styles.scoreDivider}>–</span>
-                    <span style={styles.scoreNum(p2?.is_winner)}>
-                      {p2?.score ?? '?'}
-                    </span>
-                  </div>
+                  {/* Centre: score pill for Snooker, winner badge for Pool */}
+                  {isSnooker ? (
+                    <div style={styles.scorePill}>
+                      <span style={styles.scoreNum(p1?.is_winner)}>
+                        {p1?.score ?? '?'}
+                      </span>
+                      <span style={styles.scoreDivider}>–</span>
+                      <span style={styles.scoreNum(p2?.is_winner)}>
+                        {p2?.score ?? '?'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={styles.poolWinnerBadge}>
+                      <span style={styles.poolWinnerName}>{winnerName}</span>
+                      <span style={styles.poolWBadge}>W</span>
+                    </div>
+                  )}
 
                   {/* Player 2 — right aligned */}
                   {p2 && (
@@ -443,9 +482,10 @@ export default function History() {
                           {formatEloChange(p2.elo_change)} ELO
                         </span>
                       )}
-                      {isSnooker && p2.highest_break != null && (
+                      {/* Snooker: always show highest break (dash if missing) */}
+                      {isSnooker && (
                         <span style={styles.highestBreak}>
-                          ⚡ Break: {p2.highest_break}
+                          ⚡ Break: {p2.highest_break ?? '—'}
                         </span>
                       )}
                     </div>
