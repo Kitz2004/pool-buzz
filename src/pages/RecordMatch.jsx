@@ -55,7 +55,7 @@ const Input = ({ style, ...props }) => (
       ...style,
     }}
     onFocus={e => (e.target.style.borderColor = T.green)}
-    onBlur={e => (e.target.style.borderColor = T.border)}
+    onBlur={e  => (e.target.style.borderColor = T.border)}
     {...props}
   />
 );
@@ -230,16 +230,30 @@ function PlayerSearch({ label, value, onChange, exclude }) {
   );
 }
 
-// ─── POOL WIN BUTTONS ────────────────────────────────────────────────────────
-function PoolWinButtons({ player1, player2, winner, onSelect }) {
+// ─── WIN BUTTONS ─────────────────────────────────────────────────────────────
+// Used by both Pool and Snooker. Pool uses green/red per button;
+// Snooker uses red/red (same accent) to stay on-theme.
+function WinButtons({ player1, player2, winner, onSelect, gameType }) {
+  const isSnooker = gameType === "Snooker";
+
   const buttons = [
-    { key: "p1", label: player1 ? player1.name : "Player 1", color: T.green, glow: T.greenGlow },
-    { key: "p2", label: player2 ? player2.name : "Player 2", color: T.red,   glow: T.redGlow   },
+    {
+      key:   "p1",
+      label: player1 ? player1.name : "Player 1",
+      color: isSnooker ? T.red   : T.green,
+      glow:  isSnooker ? T.redGlow : T.greenGlow,
+    },
+    {
+      key:   "p2",
+      label: player2 ? player2.name : "Player 2",
+      color: T.red,
+      glow:  T.redGlow,
+    },
   ];
 
   return (
     <div>
-      <Label>Winner</Label>
+      <Label>Who won?</Label>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {buttons.map(({ key, label, color, glow }) => {
           const active = winner === key;
@@ -277,7 +291,7 @@ function PoolWinButtons({ player1, player2, winner, onSelect }) {
               }}
             >
               <div style={{ fontSize: 22, marginBottom: 8 }}>
-                {active ? "🏆" : "🎱"}
+                {active ? "🏆" : (isSnooker ? "🔴" : "🎱")}
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>
                 {label}
@@ -298,7 +312,8 @@ function PoolWinButtons({ player1, player2, winner, onSelect }) {
 
 // ─── RESULT CARD ─────────────────────────────────────────────────────────────
 function ResultCard({ result, onReset }) {
-  const { p1, p2, winner, score1, score2, gameType, highBreak1, highBreak2 } = result;
+  const { p1, p2, winner, gameType, highBreak1, highBreak2 } = result;
+  const isSnooker = gameType === "Snooker";
 
   const EloChip = ({ change }) => (
     <span style={{
@@ -336,22 +351,19 @@ function ResultCard({ result, onReset }) {
       }}>
         {[p1, p2].map((p, i) => {
           const isWinner = p.name === winner;
-          const score = i === 0 ? score1 : score2;
-          const change = i === 0 ? result.eloChange1 : result.eloChange2;
-          const hb = i === 0 ? highBreak1 : highBreak2;
+          const change   = i === 0 ? result.eloChange1 : result.eloChange2;
+          const hb       = i === 0 ? highBreak1 : highBreak2;
           return (
             <div key={p.id} style={{
               background: isWinner ? T.greenGlow : T.surface,
               border: `1px solid ${isWinner ? T.green : T.border}`,
               borderRadius: T.radius, padding: "16px 12px", textAlign: "center",
             }}>
-              <div style={{ fontSize: 13, color: T.textSec, marginBottom: 4, fontWeight: 600 }}>{p.name}</div>
-              <div style={{
-                fontSize: 40, fontWeight: 900, lineHeight: 1,
-                color: isWinner ? T.green : T.textPrim,
-              }}>{score}</div>
-              <div style={{ marginTop: 8 }}><EloChip change={change} /></div>
-              {gameType === "Snooker" && hb !== "" && hb !== undefined && (
+              <div style={{ fontSize: 13, color: T.textSec, marginBottom: 4, fontWeight: 600 }}>
+                {p.name}
+              </div>
+              <div style={{ marginTop: 4 }}><EloChip change={change} /></div>
+              {isSnooker && hb !== "" && hb !== undefined && (
                 <div style={{ marginTop: 8, fontSize: 11, color: T.gold, fontWeight: 600 }}>
                   🎱 Break {hb}
                 </div>
@@ -368,7 +380,7 @@ function ResultCard({ result, onReset }) {
       }}>
         {[p1, p2].map((p, i) => {
           const before = i === 0 ? result.elo1Before : result.elo2Before;
-          const after = i === 0 ? result.elo1After : result.elo2After;
+          const after  = i === 0 ? result.elo1After  : result.elo2After;
           return (
             <div key={p.id} style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -403,54 +415,37 @@ function ResultCard({ result, onReset }) {
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function RecordMatch() {
-  const [player1, setPlayer1] = useState(null);
-  const [player2, setPlayer2] = useState(null);
-  const [gameType, setGameType] = useState("Pool");
-
-  // Pool: track which player won ("p1" | "p2" | null)
-  const [poolWinner, setPoolWinner] = useState(null);
-
-  // Snooker: score inputs
-  const [score1, setScore1] = useState("");
-  const [score2, setScore2] = useState("");
-
-  // Snooker: highest break inputs
+  const [player1,    setPlayer1]    = useState(null);
+  const [player2,    setPlayer2]    = useState(null);
+  const [gameType,   setGameType]   = useState("Pool");
+  const [winner,     setWinner]     = useState(null); // "p1" | "p2" | null — shared by both game types
   const [highBreak1, setHighBreak1] = useState("");
   const [highBreak2, setHighBreak2] = useState("");
+  const [saving,     setSaving]     = useState(false);
+  const [error,      setError]      = useState("");
+  const [result,     setResult]     = useState(null);
 
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState(null);
+  const isSnooker = gameType === "Snooker";
 
-  // Reset pool winner when game type changes
   const handleGameType = (type) => {
     setGameType(type);
-    setPoolWinner(null);
-    setScore1(""); setScore2("");
+    setWinner(null);
     setHighBreak1(""); setHighBreak2("");
     setError("");
   };
 
   const reset = () => {
     setPlayer1(null); setPlayer2(null);
-    setPoolWinner(null);
-    setScore1(""); setScore2("");
+    setWinner(null);
     setHighBreak1(""); setHighBreak2("");
     setGameType("Pool");
     setError(""); setResult(null);
   };
 
   const validate = () => {
-    if (!player1 || !player2) return "Please select both players.";
-    if (player1.id === player2.id) return "Players must be different.";
-
-    if (gameType === "Pool") {
-      if (!poolWinner) return "Please select a winner.";
-    } else {
-      const s1 = parseInt(score1), s2 = parseInt(score2);
-      if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) return "Enter valid scores.";
-      if (s1 === s2) return "Match cannot end in a draw.";
-    }
+    if (!player1 || !player2)      return "Please select both players.";
+    if (player1.id === player2.id)  return "Players must be different.";
+    if (!winner)                    return "Please select a winner.";
     return null;
   };
 
@@ -460,27 +455,24 @@ export default function RecordMatch() {
     setError(""); setSaving(true);
 
     try {
-      // Resolve final scores & winner
-      let s1, s2;
-      if (gameType === "Pool") {
-        s1 = poolWinner === "p1" ? 1 : 0;
-        s2 = poolWinner === "p2" ? 1 : 0;
-      } else {
-        s1 = parseInt(score1);
-        s2 = parseInt(score2);
-      }
+      // Both game types now use the winner button — same resolution path
+      const p1Won = winner === "p1";
+      const s1    = p1Won ? 1 : 0;
+      const s2    = p1Won ? 0 : 1;
 
-      const p1Won = s1 > s2;
       const elo = calcElo(player1.elo_rating, player2.elo_rating, p1Won);
 
-      const matchPayload = {
-        game_type: gameType,
-        format: "race_to",
-        race_to: 1,
-        played_at: new Date().toISOString(),
-        is_deleted: false,
-      };
-      const { data: match, error: matchErr } = await supabase.from("matches").insert(matchPayload).select().single();
+      const { data: match, error: matchErr } = await supabase
+        .from("matches")
+        .insert({
+          game_type:  gameType,
+          format:     "race_to",
+          race_to:    1,
+          played_at:  new Date().toISOString(),
+          is_deleted: false,
+        })
+        .select()
+        .single();
       if (matchErr) throw matchErr;
 
       const mpRows = [
@@ -488,13 +480,13 @@ export default function RecordMatch() {
           match_id: match.id, player_id: player1.id, score: s1,
           is_winner: p1Won, elo_before: player1.elo_rating,
           elo_after: elo.newA, elo_change: elo.changeA,
-          ...(gameType === "Snooker" && highBreak1 !== "" ? { highest_break: parseInt(highBreak1) } : {}),
+          ...(isSnooker && highBreak1 !== "" ? { highest_break: parseInt(highBreak1) } : {}),
         },
         {
           match_id: match.id, player_id: player2.id, score: s2,
           is_winner: !p1Won, elo_before: player2.elo_rating,
           elo_after: elo.newB, elo_change: elo.changeB,
-          ...(gameType === "Snooker" && highBreak2 !== "" ? { highest_break: parseInt(highBreak2) } : {}),
+          ...(isSnooker && highBreak2 !== "" ? { highest_break: parseInt(highBreak2) } : {}),
         },
       ];
       const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
@@ -507,16 +499,15 @@ export default function RecordMatch() {
         const streak = won
           ? (p.current_streak >= 0 ? p.current_streak + 1 : 1)
           : (p.current_streak <= 0 ? p.current_streak - 1 : -1);
-        const longestWin = won ? Math.max(p.longest_win_streak || 0, streak) : (p.longest_win_streak || 0);
+        const longestWin  = won  ? Math.max(p.longest_win_streak  || 0, streak)          : (p.longest_win_streak  || 0);
         const longestLoss = !won ? Math.max(p.longest_loss_streak || 0, Math.abs(streak)) : (p.longest_loss_streak || 0);
-
         await supabase.from("players").update({
-          elo_rating: newElo,
-          total_matches: (p.total_matches || 0) + 1,
-          total_wins: (p.total_wins || 0) + (won ? 1 : 0),
-          total_losses: (p.total_losses || 0) + (won ? 0 : 1),
-          current_streak: streak,
-          longest_win_streak: longestWin,
+          elo_rating:          newElo,
+          total_matches:       (p.total_matches  || 0) + 1,
+          total_wins:          (p.total_wins     || 0) + (won ? 1 : 0),
+          total_losses:        (p.total_losses   || 0) + (won ? 0 : 1),
+          current_streak:      streak,
+          longest_win_streak:  longestWin,
           longest_loss_streak: longestLoss,
         }).eq("id", player.id);
       };
@@ -526,8 +517,7 @@ export default function RecordMatch() {
 
       setResult({
         p1: player1, p2: player2,
-        winner: p1Won ? player1.name : player2.name,
-        score1: s1, score2: s2,
+        winner:     p1Won ? player1.name : player2.name,
         gameType,
         eloChange1: elo.changeA, eloChange2: elo.changeB,
         elo1Before: player1.elo_rating, elo1After: elo.newA,
@@ -596,63 +586,31 @@ export default function RecordMatch() {
               <div style={{ marginBottom: 20 }}>
                 <Label>Game Type</Label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <Pill active={gameType === "Pool"} onClick={() => handleGameType("Pool")}>🎱 Pool</Pill>
+                  <Pill active={gameType === "Pool"}    onClick={() => handleGameType("Pool")}>🎱 Pool</Pill>
                   <Pill active={gameType === "Snooker"} onClick={() => handleGameType("Snooker")}>🔴 Snooker</Pill>
                 </div>
               </div>
 
               <Divider />
 
-              {/* ── POOL: big winner buttons ── */}
-              {gameType === "Pool" && (
-                <div style={{ marginBottom: 24 }}>
-                  <PoolWinButtons
-                    player1={player1}
-                    player2={player2}
-                    winner={poolWinner}
-                    onSelect={setPoolWinner}
-                  />
-                </div>
-              )}
+              {/* ── Who won? — both game types ── */}
+              <div style={{ marginBottom: isSnooker ? 0 : 24 }}>
+                <WinButtons
+                  player1={player1}
+                  player2={player2}
+                  winner={winner}
+                  onSelect={setWinner}
+                  gameType={gameType}
+                />
+              </div>
 
-              {/* ── SNOOKER: score inputs + highest break ── */}
-              {gameType === "Snooker" && (
+              {/* ── Break inputs — Snooker only ── */}
+              {isSnooker && (
                 <>
-                  {/* Scores */}
-                  <div style={{ marginBottom: 20 }}>
-                    <Label>Score</Label>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
-                          {player1 ? player1.name : "Player 1"}
-                        </div>
-                        <Input
-                          type="number" min="0"
-                          placeholder="0"
-                          value={score1}
-                          onChange={e => setScore1(e.target.value)}
-                          style={{ textAlign: "center", fontSize: 20, fontWeight: 800, padding: "12px 8px" }}
-                        />
-                      </div>
-                      <div style={{ color: T.textMuted, fontWeight: 700, paddingTop: 20 }}>–</div>
-                      <div>
-                        <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
-                          {player2 ? player2.name : "Player 2"}
-                        </div>
-                        <Input
-                          type="number" min="0"
-                          placeholder="0"
-                          value={score2}
-                          onChange={e => setScore2(e.target.value)}
-                          style={{ textAlign: "center", fontSize: 20, fontWeight: 800, padding: "12px 8px" }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Highest break */}
+                  <Divider />
                   <div style={{ marginBottom: 24 }}>
-                    <Label>Highest Break</Label>
+                    {/* Label renamed from "Highest Break" to "Break" */}
+                    <Label>Break</Label>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
                       <div>
                         <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
