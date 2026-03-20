@@ -79,11 +79,11 @@ const Divider = () => (
 
 // ─── PLAYER SEARCH ───────────────────────────────────────────────────────────
 function PlayerSearch({ label, value, onChange, exclude }) {
-  const [query, setQuery] = useState("");
+  const [query,   setQuery]   = useState("");
   const [results, setResults] = useState([]);
-  const [open, setOpen] = useState(false);
+  const [open,    setOpen]    = useState(false);
   const [loading, setLoading] = useState(false);
-  const ref = useRef();
+  const ref           = useRef();
   const committingRef = useRef(false);
 
   useEffect(() => {
@@ -98,17 +98,13 @@ function PlayerSearch({ label, value, onChange, exclude }) {
   }, []);
 
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      setOpen(false);
-      return;
-    }
+    if (!query.trim()) { setResults([]); setOpen(false); return; }
     setOpen(true);
     const t = setTimeout(async () => {
       setLoading(true);
       const { data } = await supabase
         .from("players")
-        .select("id, name, elo_rating")
+        .select("id, name, elo_rating, snooker_elo")
         .ilike("name", `%${query}%`)
         .limit(6);
       setResults(data || []);
@@ -130,7 +126,8 @@ function PlayerSearch({ label, value, onChange, exclude }) {
     const { data, error } = await supabase
       .from("players")
       .insert({
-        name, elo_rating: 1200, total_matches: 0, total_wins: 0,
+        name, elo_rating: 1200, snooker_elo: 1200,
+        total_matches: 0, total_wins: 0,
         total_losses: 0, current_streak: 0,
         longest_win_streak: 0, longest_loss_streak: 0,
       })
@@ -139,10 +136,8 @@ function PlayerSearch({ label, value, onChange, exclude }) {
     if (!error && data) select(data);
   };
 
-  const filtered = results.filter(r => !exclude || r.id !== exclude.id);
-  const exactMatch = filtered.some(
-    r => r.name.toLowerCase() === query.trim().toLowerCase()
-  );
+  const filtered   = results.filter(r => !exclude || r.id !== exclude.id);
+  const exactMatch = filtered.some(r => r.name.toLowerCase() === query.trim().toLowerCase());
   const showAddButton = open && !value && !loading && query.trim() && !exactMatch;
 
   return (
@@ -152,10 +147,7 @@ function PlayerSearch({ label, value, onChange, exclude }) {
         <Input
           placeholder="Search player name…"
           value={value ? value.name : query}
-          onChange={e => {
-            setQuery(e.target.value);
-            if (value) onChange(null);
-          }}
+          onChange={e => { setQuery(e.target.value); if (value) onChange(null); }}
           onFocus={() => { if (query.trim()) setOpen(true); }}
           onBlur={() => { if (!committingRef.current) setOpen(false); }}
         />
@@ -179,9 +171,7 @@ function PlayerSearch({ label, value, onChange, exclude }) {
           boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
         }}>
           {loading && (
-            <div style={{ padding: "12px 14px", color: T.textMuted, fontSize: 13 }}>
-              Searching…
-            </div>
+            <div style={{ padding: "12px 14px", color: T.textMuted, fontSize: 13 }}>Searching…</div>
           )}
           {!loading && filtered.map(p => (
             <div
@@ -198,13 +188,12 @@ function PlayerSearch({ label, value, onChange, exclude }) {
               onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             >
               <span style={{ color: T.textPrim, fontSize: 14 }}>{p.name}</span>
+              {/* Show the relevant ELO for context — will be shown in the search dropdown */}
               <span style={{ color: T.textMuted, fontSize: 12 }}>ELO {p.elo_rating}</span>
             </div>
           ))}
           {!loading && filtered.length === 0 && (
-            <div style={{ padding: "10px 14px", color: T.textMuted, fontSize: 13 }}>
-              No players found
-            </div>
+            <div style={{ padding: "10px 14px", color: T.textMuted, fontSize: 13 }}>No players found</div>
           )}
           {showAddButton && (
             <div
@@ -231,24 +220,12 @@ function PlayerSearch({ label, value, onChange, exclude }) {
 }
 
 // ─── WIN BUTTONS ─────────────────────────────────────────────────────────────
-// Used by both Pool and Snooker. Pool uses green/red per button;
-// Snooker uses red/red (same accent) to stay on-theme.
 function WinButtons({ player1, player2, winner, onSelect, gameType }) {
   const isSnooker = gameType === "Snooker";
 
   const buttons = [
-    {
-      key:   "p1",
-      label: player1 ? player1.name : "Player 1",
-      color: isSnooker ? T.red   : T.green,
-      glow:  isSnooker ? T.redGlow : T.greenGlow,
-    },
-    {
-      key:   "p2",
-      label: player2 ? player2.name : "Player 2",
-      color: T.red,
-      glow:  T.redGlow,
-    },
+    { key: "p1", label: player1 ? player1.name : "Player 1", color: isSnooker ? T.red : T.green, glow: isSnooker ? T.redGlow : T.greenGlow },
+    { key: "p2", label: player2 ? player2.name : "Player 2", color: T.red, glow: T.redGlow },
   ];
 
   return (
@@ -262,44 +239,22 @@ function WinButtons({ player1, player2, winner, onSelect, gameType }) {
               key={key}
               onClick={() => onSelect(active ? null : key)}
               style={{
-                padding: "20px 12px",
-                borderRadius: T.radius,
+                padding: "20px 12px", borderRadius: T.radius,
                 border: `2px solid ${active ? color : T.border}`,
                 background: active ? glow : T.surface,
                 color: active ? color : T.textSec,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                fontWeight: 800,
-                fontSize: 14,
-                letterSpacing: "0.02em",
-                textAlign: "center",
-                transition: "all 0.18s",
+                cursor: "pointer", fontFamily: "inherit",
+                fontWeight: 800, fontSize: 14, letterSpacing: "0.02em",
+                textAlign: "center", transition: "all 0.18s",
                 boxShadow: active ? `0 0 20px ${glow}` : "none",
                 lineHeight: 1.3,
               }}
-              onMouseEnter={e => {
-                if (!active) {
-                  e.currentTarget.style.borderColor = color;
-                  e.currentTarget.style.color = color;
-                }
-              }}
-              onMouseLeave={e => {
-                if (!active) {
-                  e.currentTarget.style.borderColor = T.border;
-                  e.currentTarget.style.color = T.textSec;
-                }
-              }}
+              onMouseEnter={e => { if (!active) { e.currentTarget.style.borderColor = color; e.currentTarget.style.color = color; } }}
+              onMouseLeave={e => { if (!active) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textSec; } }}
             >
-              <div style={{ fontSize: 22, marginBottom: 8 }}>
-                {active ? "🏆" : (isSnooker ? "🔴" : "🎱")}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>
-                {label}
-              </div>
-              <div style={{
-                fontSize: 10, fontWeight: 600, letterSpacing: "0.1em",
-                textTransform: "uppercase", opacity: 0.7, marginTop: 4,
-              }}>
+              <div style={{ fontSize: 22, marginBottom: 8 }}>{active ? "🏆" : (isSnooker ? "🔴" : "🎱")}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{label}</div>
+              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", opacity: 0.7, marginTop: 4 }}>
                 Wins
               </div>
             </button>
@@ -315,13 +270,16 @@ function ResultCard({ result, onReset }) {
   const { p1, p2, winner, gameType, highBreak1, highBreak2 } = result;
   const isSnooker = gameType === "Snooker";
 
+  // Label shown inside the ELO chip — "Snooker ELO" vs "ELO"
+  const eloLabel = isSnooker ? "Snooker ELO" : "ELO";
+
   const EloChip = ({ change }) => (
     <span style={{
       padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700,
       background: change >= 0 ? "rgba(0,229,160,0.12)" : "rgba(255,77,109,0.12)",
       color: change >= 0 ? T.green : T.red,
     }}>
-      {change >= 0 ? "+" : ""}{change}
+      {change >= 0 ? "+" : ""}{change} {eloLabel}
     </span>
   );
 
@@ -329,6 +287,7 @@ function ResultCard({ result, onReset }) {
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       <style>{`@keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }`}</style>
 
+      {/* Header */}
       <div style={{
         textAlign: "center", marginBottom: 24,
         padding: "20px 0 16px",
@@ -340,15 +299,11 @@ function ResultCard({ result, onReset }) {
         <div style={{ fontSize: 28, fontWeight: 800, color: T.textPrim, letterSpacing: "-0.02em" }}>
           {winner} wins
         </div>
-        <div style={{ marginTop: 4, color: T.textSec, fontSize: 14 }}>
-          {gameType}
-        </div>
+        <div style={{ marginTop: 4, color: T.textSec, fontSize: 14 }}>{gameType}</div>
       </div>
 
-      <div style={{
-        display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12,
-        alignItems: "center", marginBottom: 20,
-      }}>
+      {/* Player result tiles */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center", marginBottom: 20 }}>
         {[p1, p2].map((p, i) => {
           const isWinner = p.name === winner;
           const change   = i === 0 ? result.eloChange1 : result.eloChange2;
@@ -359,9 +314,7 @@ function ResultCard({ result, onReset }) {
               border: `1px solid ${isWinner ? T.green : T.border}`,
               borderRadius: T.radius, padding: "16px 12px", textAlign: "center",
             }}>
-              <div style={{ fontSize: 13, color: T.textSec, marginBottom: 4, fontWeight: 600 }}>
-                {p.name}
-              </div>
+              <div style={{ fontSize: 13, color: T.textSec, marginBottom: 4, fontWeight: 600 }}>{p.name}</div>
               <div style={{ marginTop: 4 }}><EloChip change={change} /></div>
               {isSnooker && hb !== "" && hb !== undefined && (
                 <div style={{ marginTop: 8, fontSize: 11, color: T.gold, fontWeight: 600 }}>
@@ -374,10 +327,22 @@ function ResultCard({ result, onReset }) {
         <div style={{ textAlign: "center", color: T.textMuted, fontWeight: 800, fontSize: 18 }}>VS</div>
       </div>
 
+      {/* ELO before → after summary */}
       <div style={{
-        background: T.surface, borderRadius: T.radiusSm, padding: "14px 16px",
-        marginBottom: 24, fontSize: 13,
+        background: T.surface, borderRadius: T.radiusSm,
+        padding: "14px 16px", marginBottom: 24, fontSize: 13,
       }}>
+        {/* Column header */}
+        <div style={{
+          display: "flex", justifyContent: "space-between",
+          fontSize: 10, fontWeight: 700, letterSpacing: "0.1em",
+          textTransform: "uppercase", color: T.textMuted,
+          marginBottom: 8,
+        }}>
+          <span>Player</span>
+          <span>{eloLabel} change</span>
+        </div>
+
         {[p1, p2].map((p, i) => {
           const before = i === 0 ? result.elo1Before : result.elo2Before;
           const after  = i === 0 ? result.elo1After  : result.elo2After;
@@ -401,8 +366,7 @@ function ResultCard({ result, onReset }) {
         width: "100%", padding: "13px", borderRadius: T.radius,
         background: T.green, border: "none", color: "#000",
         fontWeight: 700, fontSize: 14, letterSpacing: "0.04em",
-        cursor: "pointer", fontFamily: "inherit",
-        transition: "opacity 0.2s",
+        cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.2s",
       }}
         onMouseEnter={e => (e.target.style.opacity = 0.85)}
         onMouseLeave={e => (e.target.style.opacity = 1)}
@@ -418,7 +382,7 @@ export default function RecordMatch() {
   const [player1,    setPlayer1]    = useState(null);
   const [player2,    setPlayer2]    = useState(null);
   const [gameType,   setGameType]   = useState("Pool");
-  const [winner,     setWinner]     = useState(null); // "p1" | "p2" | null — shared by both game types
+  const [winner,     setWinner]     = useState(null);
   const [highBreak1, setHighBreak1] = useState("");
   const [highBreak2, setHighBreak2] = useState("");
   const [saving,     setSaving]     = useState(false);
@@ -455,13 +419,26 @@ export default function RecordMatch() {
     setError(""); setSaving(true);
 
     try {
-      // Both game types now use the winner button — same resolution path
       const p1Won = winner === "p1";
       const s1    = p1Won ? 1 : 0;
       const s2    = p1Won ? 0 : 1;
 
-      const elo = calcElo(player1.elo_rating, player2.elo_rating, p1Won);
+      // ── Pick the correct ELO column for each player ──────────────────────
+      // Pool matches read/write  elo_rating
+      // Snooker matches read/write snooker_elo
+      // snooker_elo falls back to 1200 if the column is null (new players)
+      const eloCol = isSnooker ? "snooker_elo" : "elo_rating";
 
+      const r1 = isSnooker
+        ? (player1.snooker_elo ?? 1200)
+        : player1.elo_rating;
+      const r2 = isSnooker
+        ? (player2.snooker_elo ?? 1200)
+        : player2.elo_rating;
+
+      const elo = calcElo(r1, r2, p1Won);
+
+      // Insert match row
       const { data: match, error: matchErr } = await supabase
         .from("matches")
         .insert({
@@ -475,34 +452,53 @@ export default function RecordMatch() {
         .single();
       if (matchErr) throw matchErr;
 
+      // Insert match_players rows
+      // elo_before / elo_after / elo_change always reflect the rating used for this match
       const mpRows = [
         {
           match_id: match.id, player_id: player1.id, score: s1,
-          is_winner: p1Won, elo_before: player1.elo_rating,
-          elo_after: elo.newA, elo_change: elo.changeA,
+          is_winner: p1Won,
+          elo_before: r1, elo_after: elo.newA, elo_change: elo.changeA,
           ...(isSnooker && highBreak1 !== "" ? { highest_break: parseInt(highBreak1) } : {}),
         },
         {
           match_id: match.id, player_id: player2.id, score: s2,
-          is_winner: !p1Won, elo_before: player2.elo_rating,
-          elo_after: elo.newB, elo_change: elo.changeB,
+          is_winner: !p1Won,
+          elo_before: r2, elo_after: elo.newB, elo_change: elo.changeB,
           ...(isSnooker && highBreak2 !== "" ? { highest_break: parseInt(highBreak2) } : {}),
         },
       ];
       const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
       if (mpErr) throw mpErr;
 
+      // ── Update player stats ───────────────────────────────────────────────
       const updatePlayer = async (player, won) => {
         const newElo = won ? elo.newA : elo.newB;
-        const { data: fresh } = await supabase.from("players").select("*").eq("id", player.id).single();
+
+        // Re-fetch to get the latest streak values (avoid stale closure)
+        const { data: fresh } = await supabase
+          .from("players")
+          .select("*")
+          .eq("id", player.id)
+          .single();
         const p = fresh || player;
+
         const streak = won
           ? (p.current_streak >= 0 ? p.current_streak + 1 : 1)
           : (p.current_streak <= 0 ? p.current_streak - 1 : -1);
-        const longestWin  = won  ? Math.max(p.longest_win_streak  || 0, streak)          : (p.longest_win_streak  || 0);
-        const longestLoss = !won ? Math.max(p.longest_loss_streak || 0, Math.abs(streak)) : (p.longest_loss_streak || 0);
+
+        const longestWin  = won
+          ? Math.max(p.longest_win_streak  || 0, streak)
+          : (p.longest_win_streak  || 0);
+        const longestLoss = !won
+          ? Math.max(p.longest_loss_streak || 0, Math.abs(streak))
+          : (p.longest_loss_streak || 0);
+
         await supabase.from("players").update({
-          elo_rating:          newElo,
+          // Write new ELO into the correct column only
+          [eloCol]:            newElo,
+
+          // Shared stats updated for both game types
           total_matches:       (p.total_matches  || 0) + 1,
           total_wins:          (p.total_wins     || 0) + (won ? 1 : 0),
           total_losses:        (p.total_losses   || 0) + (won ? 0 : 1),
@@ -520,8 +516,9 @@ export default function RecordMatch() {
         winner:     p1Won ? player1.name : player2.name,
         gameType,
         eloChange1: elo.changeA, eloChange2: elo.changeB,
-        elo1Before: player1.elo_rating, elo1After: elo.newA,
-        elo2Before: player2.elo_rating, elo2After: elo.newB,
+        // Pass the pre-match ratings so the result card shows the right column's before/after
+        elo1Before: r1, elo1After: elo.newA,
+        elo2Before: r2, elo2After: elo.newB,
         highBreak1, highBreak2,
       });
     } catch (e) {
@@ -593,7 +590,7 @@ export default function RecordMatch() {
 
               <Divider />
 
-              {/* ── Who won? — both game types ── */}
+              {/* Who won? */}
               <div style={{ marginBottom: isSnooker ? 0 : 24 }}>
                 <WinButtons
                   player1={player1}
@@ -604,12 +601,11 @@ export default function RecordMatch() {
                 />
               </div>
 
-              {/* ── Break inputs — Snooker only ── */}
+              {/* Break inputs — Snooker only */}
               {isSnooker && (
                 <>
                   <Divider />
                   <div style={{ marginBottom: 24 }}>
-                    {/* Label renamed from "Highest Break" to "Break" */}
                     <Label>Break</Label>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
                       <div>
@@ -617,10 +613,8 @@ export default function RecordMatch() {
                           {player1 ? player1.name : "Player 1"}
                         </div>
                         <Input
-                          type="number" min="0" max="147"
-                          placeholder="0"
-                          value={highBreak1}
-                          onChange={e => setHighBreak1(e.target.value)}
+                          type="number" min="0" max="147" placeholder="0"
+                          value={highBreak1} onChange={e => setHighBreak1(e.target.value)}
                           style={{ textAlign: "center", padding: "10px 8px" }}
                         />
                       </div>
@@ -630,10 +624,8 @@ export default function RecordMatch() {
                           {player2 ? player2.name : "Player 2"}
                         </div>
                         <Input
-                          type="number" min="0" max="147"
-                          placeholder="0"
-                          value={highBreak2}
-                          onChange={e => setHighBreak2(e.target.value)}
+                          type="number" min="0" max="147" placeholder="0"
+                          value={highBreak2} onChange={e => setHighBreak2(e.target.value)}
                           style={{ textAlign: "center", padding: "10px 8px" }}
                         />
                       </div>

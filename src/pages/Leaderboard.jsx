@@ -66,7 +66,6 @@ function StreakChip({ streak }) {
 function PoolCard({ player, idx }) {
   const isMedal = idx < 3;
   const pct     = winPct(player.total_wins, player.total_matches);
-  const streak  = formatStreak(player.current_streak);
 
   return (
     <div className="lb-card" style={{
@@ -81,7 +80,6 @@ function PoolCard({ player, idx }) {
       alignItems:   "center",
       gap:          "14px",
     }}>
-      {/* Rank badge */}
       <div style={{
         flexShrink: 0, width:"34px", height:"34px", borderRadius:"8px",
         display:"flex", alignItems:"center", justifyContent:"center",
@@ -93,7 +91,6 @@ function PoolCard({ player, idx }) {
         {isMedal ? MEDAL[idx].label : idx + 1}
       </div>
 
-      {/* Name + record */}
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{
           fontSize:"15px", fontWeight: isMedal ? "700" : "600",
@@ -113,7 +110,6 @@ function PoolCard({ player, idx }) {
         </div>
       </div>
 
-      {/* ELO — right side */}
       <div style={{ flexShrink:0, textAlign:"right" }}>
         <div style={{
           fontSize:"18px", fontWeight:"800", letterSpacing:"-0.02em",
@@ -183,6 +179,20 @@ function SnookerCard({ row, idx }) {
           )}
         </div>
       </div>
+
+      {/* Snooker ELO */}
+      <div style={{ flexShrink:0, textAlign:"right" }}>
+        <div style={{
+          fontSize:"18px", fontWeight:"800", letterSpacing:"-0.02em",
+          color: isMedal ? MEDAL[idx].text : "#a78bfa",
+          fontVariantNumeric:"tabular-nums",
+        }}>
+          {row.snooker_elo ?? "—"}
+        </div>
+        <div style={{ fontSize:"9px", color:"#555E6B", letterSpacing:"0.1em", textTransform:"uppercase", marginTop:"1px" }}>
+          S·ELO
+        </div>
+      </div>
     </div>
   );
 }
@@ -209,8 +219,7 @@ function PoolTable({ players }) {
         </thead>
         <tbody>
           {players.map((player, idx) => {
-            const pct    = winPct(player.total_wins, player.total_matches);
-            const streak = formatStreak(player.current_streak);
+            const pct     = winPct(player.total_wins, player.total_matches);
             const isMedal = idx < 3;
             return (
               <tr key={player.id} style={{
@@ -219,7 +228,6 @@ function PoolTable({ players }) {
                 borderBottom: "1px solid rgba(255,255,255,0.04)",
                 transition:   "background 0.15s ease",
               }}>
-                {/* Rank */}
                 <td style={{ padding:"14px 16px", textAlign:"center", verticalAlign:"middle" }}>
                   <span style={{
                     display:"inline-flex", alignItems:"center", justifyContent:"center",
@@ -231,13 +239,11 @@ function PoolTable({ players }) {
                     {isMedal ? MEDAL[idx].label : idx + 1}
                   </span>
                 </td>
-                {/* Name */}
                 <td style={{ padding:"14px 16px", fontSize:"13px", verticalAlign:"middle" }}>
                   <span style={{ fontWeight: isMedal?"700":"500", color: isMedal?MEDAL[idx].text:"#E8ECF0", fontSize:"14px" }}>
                     {player.name}
                   </span>
                 </td>
-                {/* ELO */}
                 <td style={{ padding:"14px 16px", textAlign:"right", verticalAlign:"middle" }}>
                   <span style={{ fontWeight:"700", fontSize:"14px", color: isMedal?MEDAL[idx].text:"#3DDC84", fontVariantNumeric:"tabular-nums" }}>
                     {player.elo_rating ?? "—"}
@@ -270,7 +276,7 @@ function SnookerTable({ rows }) {
       <table style={{ width:"100%", borderCollapse:"collapse" }}>
         <thead style={{ background:"rgba(255,255,255,0.03)", borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
           <tr>
-            {["#","Player","Played","Wins","Win %","Hi Break"].map((h, i) => (
+            {["#","Player","S·ELO","Played","Wins","Win %","Hi Break"].map((h, i) => (
               <th key={h} style={{
                 padding:"12px 16px", fontSize:"10px", fontWeight:"700",
                 letterSpacing:"0.14em", textTransform:"uppercase", color:"#555E6B",
@@ -291,6 +297,7 @@ function SnookerTable({ rows }) {
                 borderBottom: "1px solid rgba(255,255,255,0.04)",
                 transition:   "background 0.15s ease",
               }}>
+                {/* Rank */}
                 <td style={{ padding:"14px 16px", textAlign:"center", verticalAlign:"middle" }}>
                   <span style={{
                     display:"inline-flex", alignItems:"center", justifyContent:"center",
@@ -302,16 +309,27 @@ function SnookerTable({ rows }) {
                     {isMedal ? MEDAL[idx].label : idx + 1}
                   </span>
                 </td>
+                {/* Name */}
                 <td style={{ padding:"14px 16px", fontSize:"13px", verticalAlign:"middle" }}>
                   <span style={{ fontWeight: isMedal?"700":"500", color: isMedal?MEDAL[idx].text:"#E8ECF0", fontSize:"14px" }}>
                     {row.name}
                   </span>
                 </td>
+                {/* Snooker ELO */}
+                <td style={{ padding:"14px 16px", textAlign:"right", verticalAlign:"middle" }}>
+                  <span style={{ fontWeight:"700", fontSize:"14px", color: isMedal?MEDAL[idx].text:"#a78bfa", fontVariantNumeric:"tabular-nums" }}>
+                    {row.snooker_elo ?? "—"}
+                  </span>
+                </td>
+                {/* Played */}
                 <td style={{ padding:"14px 16px", textAlign:"right", verticalAlign:"middle", fontVariantNumeric:"tabular-nums", fontSize:"13px", color:"#CDD4DC" }}>{row.played}</td>
+                {/* Wins */}
                 <td style={{ padding:"14px 16px", textAlign:"right", verticalAlign:"middle", fontVariantNumeric:"tabular-nums", fontSize:"13px", color:"#CDD4DC" }}>{row.wins}</td>
+                {/* Win % */}
                 <td style={{ padding:"14px 16px", textAlign:"right", verticalAlign:"middle" }}>
                   <span style={{ color: winPctColor(pct), fontWeight:"600", fontVariantNumeric:"tabular-nums", fontSize:"13px" }}>{pct}</span>
                 </td>
+                {/* Highest Break */}
                 <td style={{ padding:"14px 16px", textAlign:"right", verticalAlign:"middle" }}>
                   {row.highest_break != null
                     ? <span style={{ fontWeight:"700", color:"#FFC53D", fontVariantNumeric:"tabular-nums", fontSize:"13px" }}>{row.highest_break}</span>
@@ -338,13 +356,11 @@ function PoolLeaderboard({ players, loading, error }) {
   );
   return (
     <>
-      {/* Mobile cards */}
       <div className="lb-cards">
         <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
           {players.map((p, i) => <PoolCard key={p.id} player={p} idx={i} />)}
         </div>
       </div>
-      {/* Desktop table */}
       <div className="lb-table">
         <PoolTable players={players} />
       </div>
@@ -367,13 +383,11 @@ function SnookerLeaderboard({ rows, loading, error }) {
   );
   return (
     <>
-      {/* Mobile cards */}
       <div className="lb-cards">
         <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
           {rows.map((r, i) => <SnookerCard key={r.player_id} row={r} idx={i} />)}
         </div>
       </div>
-      {/* Desktop table */}
       <div className="lb-table">
         <SnookerTable rows={rows} />
       </div>
@@ -396,6 +410,7 @@ export default function Leaderboard() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [countdown,   setCountdown]   = useState(30);
 
+  // ── Fetch pool leaderboard ─────────────────────────────────────────────────
   const fetchPool = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -412,34 +427,58 @@ export default function Leaderboard() {
     }
   }, []);
 
+  // ── Fetch snooker leaderboard ──────────────────────────────────────────────
+  // Strategy:
+  //   1. Pull all players that have a snooker_elo (from players table)
+  //   2. Pull match_players joined to snooker matches for played/wins/highest_break
+  //   3. Merge and rank by snooker_elo descending
   const fetchSnooker = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from("match_players")
-        .select(`player_id, is_winner, highest_break, players!inner(name), matches!inner(game_type)`)
-        .eq("matches.game_type", "snooker");
-      if (error) throw error;
+      // 1. Players with snooker_elo
+      const { data: playerData, error: playerError } = await supabase
+        .from("players")
+        .select("id, name, snooker_elo")
+        .not("snooker_elo", "is", null)
+        .order("snooker_elo", { ascending: false });
+      if (playerError) throw playerError;
 
-      const map = {};
-      for (const row of data || []) {
+      // 2. Snooker match stats
+      const { data: matchData, error: matchError } = await supabase
+        .from("match_players")
+        .select(`
+          player_id,
+          is_winner,
+          highest_break,
+          matches!inner(game_type)
+        `)
+        .eq("matches.game_type", "snooker");
+      if (matchError) throw matchError;
+
+      // Aggregate per player
+      const statsMap = {};
+      for (const row of matchData || []) {
         const pid = row.player_id;
-        if (!map[pid]) map[pid] = { player_id:pid, name:row.players.name, played:0, wins:0, highest_break:null };
-        map[pid].played += 1;
-        if (row.is_winner) map[pid].wins += 1;
+        if (!statsMap[pid]) statsMap[pid] = { played: 0, wins: 0, highest_break: null };
+        statsMap[pid].played += 1;
+        if (row.is_winner) statsMap[pid].wins += 1;
         if (row.highest_break != null)
-          map[pid].highest_break = Math.max(map[pid].highest_break ?? 0, row.highest_break);
+          statsMap[pid].highest_break = Math.max(statsMap[pid].highest_break ?? 0, row.highest_break);
       }
 
-      const sorted = Object.values(map).sort((a, b) => {
-        const pA = a.played ? a.wins / a.played : 0;
-        const pB = b.played ? b.wins / b.played : 0;
-        if (pB !== pA)           return pB - pA;
-        if (b.wins !== a.wins)   return b.wins - a.wins;
-        if (b.played !== a.played) return b.played - a.played;
-        return a.name.localeCompare(b.name);
-      });
+      // Merge: base list is players with snooker_elo, topped up with match stats
+      const merged = (playerData || []).map(p => ({
+        player_id:     p.id,
+        name:          p.name,
+        snooker_elo:   p.snooker_elo,
+        played:        statsMap[p.id]?.played        ?? 0,
+        wins:          statsMap[p.id]?.wins          ?? 0,
+        highest_break: statsMap[p.id]?.highest_break ?? null,
+      }));
 
-      setSnookerRows(sorted);
+      // Already ordered by snooker_elo from Supabase, but re-sort defensively
+      merged.sort((a, b) => (b.snooker_elo ?? 0) - (a.snooker_elo ?? 0));
+
+      setSnookerRows(merged);
       setSnookerError(null);
     } catch (e) {
       setSnookerError(e.message || "Failed to load snooker rankings.");
@@ -484,37 +523,23 @@ export default function Leaderboard() {
         @keyframes pulse      { 0%,100%{opacity:1} 50%{opacity:.4} }
         @keyframes dot-bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-6px)} }
 
-        /* Desktop: show table, hide cards */
         .lb-cards { display: none; }
         .lb-table { display: block; }
 
-        /* Mobile (≤ 599px): show cards, hide table */
         @media (max-width: 599px) {
           .lb-cards { display: block; }
           .lb-table { display: none; }
-
-          /* Tighter page padding on mobile */
           .lb-page  { padding: 20px 14px 60px !important; }
-
-          /* Slightly smaller title on mobile */
           .lb-title { font-size: 24px !important; }
-
-          /* Stack meta row vertically on very small screens */
           .lb-meta  { flex-direction: column; align-items: flex-start !important; gap: 6px !important; }
-
-          /* Full-width tab buttons on mobile */
           .lb-tabs  { width: 100% !important; }
           .lb-tab   { flex: 1; justify-content: center !important; }
-
-          /* Nav: hide text labels, keep brand */
           .nav-link-label { display: none; }
           .nav-link { padding: 7px 10px !important; }
         }
 
-        /* Table row hover */
         tr:hover td { background: rgba(61,220,132,0.04) !important; }
 
-        /* Card tap highlight on mobile */
         @media (max-width: 599px) {
           .lb-card:active { background: rgba(61,220,132,0.06) !important; }
         }
