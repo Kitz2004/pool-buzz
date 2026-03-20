@@ -1,17 +1,36 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase.js";
 
-// ─── ELO ────────────────────────────────────────────────────────────────────
+// ─── ELO ─────────────────────────────────────────────────────────────────────
 function calcElo(ratingA, ratingB, aWon, K = 32) {
   const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
   const expectedB = 1 - expectedA;
   const actualA = aWon ? 1 : 0;
   const actualB = aWon ? 0 : 1;
   return {
-    newA: Math.round(ratingA + K * (actualA - expectedA)),
-    newB: Math.round(ratingB + K * (actualB - expectedB)),
+    newA:    Math.round(ratingA + K * (actualA - expectedA)),
+    newB:    Math.round(ratingB + K * (actualB - expectedB)),
     changeA: Math.round(K * (actualA - expectedA)),
     changeB: Math.round(K * (actualB - expectedB)),
+  };
+}
+
+// ─── 3-PLAYER ELO ────────────────────────────────────────────────────────────
+// Run three 1v1 duels (1st vs 2nd, 1st vs 3rd, 2nd vs 3rd).
+// Each duel uses the *original* pre-match rating so order doesn't matter.
+// Returns { netChange: [Δ1st, Δ2nd, Δ3rd], finalElo: [new1st, new2nd, new3rd] }
+function calcThreePlayerElo(r1, r2, r3) {
+  const d12 = calcElo(r1, r2, true);   // 1st beats 2nd
+  const d13 = calcElo(r1, r3, true);   // 1st beats 3rd
+  const d23 = calcElo(r2, r3, true);   // 2nd beats 3rd
+
+  const net1 = d12.changeA + d13.changeA;          // won both duels
+  const net2 = d12.changeB + d23.changeA;          // lost to 1st, beat 3rd
+  const net3 = d13.changeB + d23.changeB;          // lost both duels
+
+  return {
+    netChange: [net1, net2, net3],
+    finalElo:  [r1 + net1, r2 + net2, r3 + net3],
   };
 }
 
@@ -28,6 +47,8 @@ const T = {
   red:       "#ff4d6d",
   redGlow:   "rgba(255,77,109,0.15)",
   gold:      "#ffd166",
+  silver:    "#b4bcc8",
+  bronze:    "#cd7f4e",
   textPrim:  "#f0f4ff",
   textSec:   "#8892a4",
   textMuted: "#4a5568",
@@ -35,11 +56,17 @@ const T = {
   radiusSm:  "8px",
 };
 
+const RANK_STYLE = {
+  1: { label: "🥇 1st", color: T.gold,   glow: "rgba(240,165,0,0.15)"  },
+  2: { label: "🥈 2nd", color: T.silver, glow: "rgba(180,188,200,0.12)" },
+  3: { label: "🥉 3rd", color: T.bronze, glow: "rgba(205,127,78,0.12)"  },
+};
+
 // ─── TINY COMPONENTS ─────────────────────────────────────────────────────────
 const Label = ({ children, style }) => (
   <div style={{
     fontSize: 10, fontWeight: 700, letterSpacing: "0.12em",
-    textTransform: "uppercase", color: T.textSec, marginBottom: 6, ...style
+    textTransform: "uppercase", color: T.textSec, marginBottom: 6, ...style,
   }}>
     {children}
   </div>
@@ -67,7 +94,7 @@ const Pill = ({ active, onClick, children }) => (
     transition: "all 0.18s",
     background: active ? T.green : "transparent",
     color: active ? "#000" : T.textSec,
-    outline: active ? `0` : `1px solid ${T.border}`,
+    outline: active ? "0" : `1px solid ${T.border}`,
   }}>
     {children}
   </button>
@@ -78,7 +105,7 @@ const Divider = () => (
 );
 
 // ─── PLAYER SEARCH ───────────────────────────────────────────────────────────
-function PlayerSearch({ label, value, onChange, exclude }) {
+function PlayerSearch({ label, value, onChange, excludeIds = [] }) {
   const [query,   setQuery]   = useState("");
   const [results, setResults] = useState([]);
   const [open,    setOpen]    = useState(false);
@@ -106,14 +133,14 @@ function PlayerSearch({ label, value, onChange, exclude }) {
         .from("players")
         .select("id, name, elo_rating, snooker_elo")
         .ilike("name", `%${query}%`)
-        .limit(6);
+        .limit(8);
       setResults(data || []);
       setLoading(false);
     }, 250);
     return () => clearTimeout(t);
   }, [query]);
 
-  const select = (player) => {
+  const select = player => {
     committingRef.current = false;
     onChange(player);
     setQuery(player.name);
@@ -127,25 +154,24 @@ function PlayerSearch({ label, value, onChange, exclude }) {
       .from("players")
       .insert({
         name, elo_rating: 1200, snooker_elo: 1200,
-        total_matches: 0, total_wins: 0,
-        total_losses: 0, current_streak: 0,
-        longest_win_streak: 0, longest_loss_streak: 0,
+        total_matches: 0, total_wins: 0, total_losses: 0,
+        current_streak: 0, longest_win_streak: 0, longest_loss_streak: 0,
       })
       .select()
       .single();
     if (!error && data) select(data);
   };
 
-  const filtered   = results.filter(r => !exclude || r.id !== exclude.id);
+  const filtered   = results.filter(r => !excludeIds.includes(r.id));
   const exactMatch = filtered.some(r => r.name.toLowerCase() === query.trim().toLowerCase());
-  const showAddButton = open && !value && !loading && query.trim() && !exactMatch;
+  const showAdd    = open && !value && !loading && query.trim() && !exactMatch;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <Label>{label}</Label>
       <div style={{ position: "relative" }}>
         <Input
-          placeholder="Search player name…"
+          placeholder="Search player…"
           value={value ? value.name : query}
           onChange={e => { setQuery(e.target.value); if (value) onChange(null); }}
           onFocus={() => { if (query.trim()) setOpen(true); }}
@@ -156,8 +182,8 @@ function PlayerSearch({ label, value, onChange, exclude }) {
             onPointerDown={() => { onChange(null); setQuery(""); }}
             style={{
               position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-              background: "none", border: "none", color: T.textMuted, cursor: "pointer",
-              fontSize: 18, lineHeight: 1, padding: 2,
+              background: "none", border: "none", color: T.textMuted,
+              cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 2,
             }}
           >×</button>
         )}
@@ -170,9 +196,7 @@ function PlayerSearch({ label, value, onChange, exclude }) {
           borderRadius: T.radiusSm, zIndex: 100, overflow: "hidden",
           boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
         }}>
-          {loading && (
-            <div style={{ padding: "12px 14px", color: T.textMuted, fontSize: 13 }}>Searching…</div>
-          )}
+          {loading && <div style={{ padding: "12px 14px", color: T.textMuted, fontSize: 13 }}>Searching…</div>}
           {!loading && filtered.map(p => (
             <div
               key={p.id}
@@ -188,17 +212,16 @@ function PlayerSearch({ label, value, onChange, exclude }) {
               onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             >
               <span style={{ color: T.textPrim, fontSize: 14 }}>{p.name}</span>
-              {/* Show the relevant ELO for context — will be shown in the search dropdown */}
               <span style={{ color: T.textMuted, fontSize: 12 }}>ELO {p.elo_rating}</span>
             </div>
           ))}
           {!loading && filtered.length === 0 && (
             <div style={{ padding: "10px 14px", color: T.textMuted, fontSize: 13 }}>No players found</div>
           )}
-          {showAddButton && (
+          {showAdd && (
             <div
               onPointerDown={() => { committingRef.current = true; }}
-              onClick={() => addNew()}
+              onClick={addNew}
               style={{
                 padding: "11px 14px", cursor: "pointer", color: T.green,
                 fontSize: 13, fontWeight: 600,
@@ -219,15 +242,13 @@ function PlayerSearch({ label, value, onChange, exclude }) {
   );
 }
 
-// ─── WIN BUTTONS ─────────────────────────────────────────────────────────────
+// ─── WIN BUTTONS (2-player) ───────────────────────────────────────────────────
 function WinButtons({ player1, player2, winner, onSelect, gameType }) {
   const isSnooker = gameType === "Snooker";
-
   const buttons = [
-    { key: "p1", label: player1 ? player1.name : "Player 1", color: isSnooker ? T.red : T.green, glow: isSnooker ? T.redGlow : T.greenGlow },
-    { key: "p2", label: player2 ? player2.name : "Player 2", color: T.red, glow: T.redGlow },
+    { key: "p1", label: player1?.name ?? "Player 1", color: isSnooker ? T.red : T.green, glow: isSnooker ? T.redGlow : T.greenGlow },
+    { key: "p2", label: player2?.name ?? "Player 2", color: T.red,                        glow: T.redGlow },
   ];
-
   return (
     <div>
       <Label>Who won?</Label>
@@ -244,10 +265,9 @@ function WinButtons({ player1, player2, winner, onSelect, gameType }) {
                 background: active ? glow : T.surface,
                 color: active ? color : T.textSec,
                 cursor: "pointer", fontFamily: "inherit",
-                fontWeight: 800, fontSize: 14, letterSpacing: "0.02em",
-                textAlign: "center", transition: "all 0.18s",
+                fontWeight: 800, fontSize: 14, textAlign: "center",
+                transition: "all 0.18s", lineHeight: 1.3,
                 boxShadow: active ? `0 0 20px ${glow}` : "none",
-                lineHeight: 1.3,
               }}
               onMouseEnter={e => { if (!active) { e.currentTarget.style.borderColor = color; e.currentTarget.style.color = color; } }}
               onMouseLeave={e => { if (!active) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textSec; } }}
@@ -265,44 +285,34 @@ function WinButtons({ player1, player2, winner, onSelect, gameType }) {
   );
 }
 
-// ─── RESULT CARD ─────────────────────────────────────────────────────────────
-function ResultCard({ result, onReset }) {
+// ─── ELO CHIP ────────────────────────────────────────────────────────────────
+const EloChip = ({ change, label = "Snooker ELO" }) => (
+  <span style={{
+    padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+    background: change >= 0 ? "rgba(0,229,160,0.12)" : "rgba(255,77,109,0.12)",
+    color: change >= 0 ? T.green : T.red,
+    whiteSpace: "nowrap",
+  }}>
+    {change >= 0 ? "+" : ""}{change} {label}
+  </span>
+);
+
+// ─── RESULT CARD — 2-player ───────────────────────────────────────────────────
+function ResultCard2({ result, onReset }) {
   const { p1, p2, winner, gameType, highBreak1, highBreak2 } = result;
-  const isSnooker = gameType === "Snooker";
-
-  // Label shown inside the ELO chip — "Snooker ELO" vs "ELO"
-  const eloLabel = isSnooker ? "Snooker ELO" : "ELO";
-
-  const EloChip = ({ change }) => (
-    <span style={{
-      padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700,
-      background: change >= 0 ? "rgba(0,229,160,0.12)" : "rgba(255,77,109,0.12)",
-      color: change >= 0 ? T.green : T.red,
-    }}>
-      {change >= 0 ? "+" : ""}{change} {eloLabel}
-    </span>
-  );
+  const isSnooker  = gameType === "Snooker";
+  const eloLabel   = isSnooker ? "Snooker ELO" : "ELO";
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
-      <style>{`@keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }`}</style>
-
-      {/* Header */}
-      <div style={{
-        textAlign: "center", marginBottom: 24,
-        padding: "20px 0 16px",
-        borderBottom: `1px solid ${T.border}`,
-      }}>
+      <div style={{ textAlign: "center", marginBottom: 24, padding: "20px 0 16px", borderBottom: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 11, letterSpacing: "0.18em", color: T.green, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>
           Match Recorded
         </div>
-        <div style={{ fontSize: 28, fontWeight: 800, color: T.textPrim, letterSpacing: "-0.02em" }}>
-          {winner} wins
-        </div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: T.textPrim, letterSpacing: "-0.02em" }}>{winner} wins</div>
         <div style={{ marginTop: 4, color: T.textSec, fontSize: 14 }}>{gameType}</div>
       </div>
 
-      {/* Player result tiles */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center", marginBottom: 20 }}>
         {[p1, p2].map((p, i) => {
           const isWinner = p.name === winner;
@@ -314,12 +324,10 @@ function ResultCard({ result, onReset }) {
               border: `1px solid ${isWinner ? T.green : T.border}`,
               borderRadius: T.radius, padding: "16px 12px", textAlign: "center",
             }}>
-              <div style={{ fontSize: 13, color: T.textSec, marginBottom: 4, fontWeight: 600 }}>{p.name}</div>
-              <div style={{ marginTop: 4 }}><EloChip change={change} /></div>
-              {isSnooker && hb !== "" && hb !== undefined && (
-                <div style={{ marginTop: 8, fontSize: 11, color: T.gold, fontWeight: 600 }}>
-                  🎱 Break {hb}
-                </div>
+              <div style={{ fontSize: 13, color: T.textSec, marginBottom: 6, fontWeight: 600 }}>{p.name}</div>
+              <EloChip change={change} label={eloLabel} />
+              {isSnooker && hb !== "" && hb != null && (
+                <div style={{ marginTop: 8, fontSize: 11, color: T.gold, fontWeight: 600 }}>🎱 Break {hb}</div>
               )}
             </div>
           );
@@ -327,46 +335,30 @@ function ResultCard({ result, onReset }) {
         <div style={{ textAlign: "center", color: T.textMuted, fontWeight: 800, fontSize: 18 }}>VS</div>
       </div>
 
-      {/* ELO before → after summary */}
-      <div style={{
-        background: T.surface, borderRadius: T.radiusSm,
-        padding: "14px 16px", marginBottom: 24, fontSize: 13,
-      }}>
-        {/* Column header */}
-        <div style={{
-          display: "flex", justifyContent: "space-between",
-          fontSize: 10, fontWeight: 700, letterSpacing: "0.1em",
-          textTransform: "uppercase", color: T.textMuted,
-          marginBottom: 8,
-        }}>
-          <span>Player</span>
-          <span>{eloLabel} change</span>
+      <div style={{ background: T.surface, borderRadius: T.radiusSm, padding: "14px 16px", marginBottom: 24, fontSize: 13 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: T.textMuted, marginBottom: 8 }}>
+          <span>Player</span><span>{eloLabel}</span>
         </div>
-
-        {[p1, p2].map((p, i) => {
-          const before = i === 0 ? result.elo1Before : result.elo2Before;
-          const after  = i === 0 ? result.elo1After  : result.elo2After;
-          return (
-            <div key={p.id} style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "4px 0",
-              borderBottom: i === 0 ? `1px solid ${T.border}` : "none",
-              marginBottom: i === 0 ? 8 : 0, paddingBottom: i === 0 ? 8 : 0,
-            }}>
-              <span style={{ color: T.textSec }}>{p.name}</span>
-              <span style={{ color: T.textPrim, fontVariantNumeric: "tabular-nums" }}>
-                {before} <span style={{ color: T.textMuted }}>→</span> {after}
-              </span>
-            </div>
-          );
-        })}
+        {[p1, p2].map((p, i) => (
+          <div key={p.id} style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0",
+            borderBottom: i === 0 ? `1px solid ${T.border}` : "none",
+            marginBottom: i === 0 ? 8 : 0, paddingBottom: i === 0 ? 8 : 0,
+          }}>
+            <span style={{ color: T.textSec }}>{p.name}</span>
+            <span style={{ color: T.textPrim, fontVariantNumeric: "tabular-nums" }}>
+              {i === 0 ? result.elo1Before : result.elo2Before}
+              <span style={{ color: T.textMuted }}> → </span>
+              {i === 0 ? result.elo1After : result.elo2After}
+            </span>
+          </div>
+        ))}
       </div>
 
       <button onClick={onReset} style={{
         width: "100%", padding: "13px", borderRadius: T.radius,
         background: T.green, border: "none", color: "#000",
-        fontWeight: 700, fontSize: 14, letterSpacing: "0.04em",
-        cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.2s",
+        fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.2s",
       }}
         onMouseEnter={e => (e.target.style.opacity = 0.85)}
         onMouseLeave={e => (e.target.style.opacity = 1)}
@@ -377,150 +369,302 @@ function ResultCard({ result, onReset }) {
   );
 }
 
+// ─── RESULT CARD — 3-player snooker ──────────────────────────────────────────
+function ResultCard3({ result, onReset }) {
+  // result.ranked = [ { player, breakScore, eloBefore, eloAfter, eloChange, rank }, … ]
+  const { ranked } = result;
+
+  return (
+    <div style={{ animation: "fadeUp 0.4s ease" }}>
+      <div style={{ textAlign: "center", marginBottom: 24, padding: "20px 0 16px", borderBottom: `1px solid ${T.border}` }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.18em", color: T.red, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>
+          Match Recorded
+        </div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: T.textPrim, letterSpacing: "-0.02em" }}>
+          {ranked[0].player.name} wins
+        </div>
+        <div style={{ marginTop: 4, color: T.textSec, fontSize: 14 }}>Snooker · 3 Players</div>
+      </div>
+
+      {/* Podium tiles */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+        {ranked.map(({ player, breakScore, eloChange, eloBefore, eloAfter, rank }) => {
+          const rs = RANK_STYLE[rank];
+          return (
+            <div key={player.id} style={{
+              display: "grid",
+              gridTemplateColumns: "auto 1fr auto",
+              alignItems: "center",
+              gap: 14,
+              background: rank === 1 ? "rgba(240,165,0,0.08)" : T.surface,
+              border: `1px solid ${rank === 1 ? "rgba(240,165,0,0.35)" : T.border}`,
+              borderRadius: T.radius,
+              padding: "14px 16px",
+            }}>
+              {/* Rank badge */}
+              <div style={{
+                fontSize: 22, lineHeight: 1, width: 36, textAlign: "center", flexShrink: 0,
+              }}>
+                {rs.label}
+              </div>
+
+              {/* Name + break */}
+              <div>
+                <div style={{ fontSize: 15, fontWeight: rank === 1 ? 800 : 600, color: rs.color, marginBottom: 4 }}>
+                  {player.name}
+                </div>
+                {breakScore !== "" && breakScore != null && (
+                  <div style={{ fontSize: 11, color: T.gold, fontWeight: 600 }}>🎱 Break {breakScore}</div>
+                )}
+              </div>
+
+              {/* ELO change + before → after */}
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <EloChip change={eloChange} label="Snooker ELO" />
+                <div style={{ fontSize: 10, color: T.textMuted, marginTop: 5, fontVariantNumeric: "tabular-nums" }}>
+                  {eloBefore} → {eloAfter}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button onClick={onReset} style={{
+        width: "100%", padding: "13px", borderRadius: T.radius,
+        background: T.green, border: "none", color: "#000",
+        fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", transition: "opacity 0.2s",
+      }}
+        onMouseEnter={e => (e.target.style.opacity = 0.85)}
+        onMouseLeave={e => (e.target.style.opacity = 1)}
+      >
+        Record Another Match
+      </button>
+    </div>
+  );
+}
+
+// ─── BREAK INPUT ROW (reusable) ───────────────────────────────────────────────
+function BreakInput({ playerName, value, onChange }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {playerName || "—"}
+      </div>
+      <Input
+        type="number" min="0" max="147" placeholder="0"
+        value={value} onChange={e => onChange(e.target.value)}
+        style={{ textAlign: "center", padding: "10px 8px" }}
+      />
+    </div>
+  );
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function RecordMatch() {
   const [player1,    setPlayer1]    = useState(null);
   const [player2,    setPlayer2]    = useState(null);
+  const [player3,    setPlayer3]    = useState(null);   // 3rd player (snooker only)
+  const [show3rd,    setShow3rd]    = useState(false);  // whether 3rd slot is visible
+
   const [gameType,   setGameType]   = useState("Pool");
-  const [winner,     setWinner]     = useState(null);
-  const [highBreak1, setHighBreak1] = useState("");
-  const [highBreak2, setHighBreak2] = useState("");
-  const [saving,     setSaving]     = useState(false);
-  const [error,      setError]      = useState("");
-  const [result,     setResult]     = useState(null);
+  const [winner,     setWinner]     = useState(null);   // "p1" | "p2" — 2-player only
 
-  const isSnooker = gameType === "Snooker";
+  // Break scores (used in snooker for ranking in 3-player, and display in result)
+  const [break1, setBreak1] = useState("");
+  const [break2, setBreak2] = useState("");
+  const [break3, setBreak3] = useState("");
 
-  const handleGameType = (type) => {
+  const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState("");
+  const [result, setResult] = useState(null);  // shape differs between 2p and 3p
+
+  const isSnooker  = gameType === "Snooker";
+  const isThree    = isSnooker && show3rd;
+
+  // ── Reset helpers ──────────────────────────────────────────────────────────
+  const handleGameType = type => {
     setGameType(type);
     setWinner(null);
-    setHighBreak1(""); setHighBreak2("");
+    setBreak1(""); setBreak2(""); setBreak3("");
+    setError("");
+    if (type !== "Snooker") { setShow3rd(false); setPlayer3(null); }
+  };
+
+  const toggle3rd = () => {
+    if (show3rd) { setPlayer3(null); setBreak3(""); }
+    setShow3rd(v => !v);
     setError("");
   };
 
   const reset = () => {
-    setPlayer1(null); setPlayer2(null);
-    setWinner(null);
-    setHighBreak1(""); setHighBreak2("");
-    setGameType("Pool");
-    setError(""); setResult(null);
+    setPlayer1(null); setPlayer2(null); setPlayer3(null);
+    setShow3rd(false); setWinner(null);
+    setBreak1(""); setBreak2(""); setBreak3("");
+    setGameType("Pool"); setError(""); setResult(null);
   };
 
+  // ── Validation ─────────────────────────────────────────────────────────────
   const validate = () => {
-    if (!player1 || !player2)      return "Please select both players.";
-    if (player1.id === player2.id)  return "Players must be different.";
-    if (!winner)                    return "Please select a winner.";
+    if (!player1 || !player2) return "Please select both players.";
+
+    const ids = [player1.id, player2.id];
+    if (isThree) {
+      if (!player3) return "Please select a 3rd player, or remove the 3rd slot.";
+      ids.push(player3.id);
+    }
+    if (new Set(ids).size !== ids.length) return "Players must all be different.";
+
+    if (!isSnooker && !winner) return "Please select a winner.";
+
+    if (isThree) {
+      // All three break scores must be provided and distinct (can't tie for rank)
+      const scores = [break1, break2, break3].map(Number);
+      if (scores.some(isNaN) || scores.some(s => s < 0)) return "Enter valid break scores for all 3 players.";
+      if (new Set(scores).size !== 3) return "Break scores must be different (used to determine ranking).";
+    }
+
     return null;
   };
 
+  // ── Save — 2-player path ───────────────────────────────────────────────────
+  const saveTwo = async () => {
+    const p1Won  = winner === "p1";
+    const s1     = p1Won ? 1 : 0;
+    const s2     = p1Won ? 0 : 1;
+    const eloCol = isSnooker ? "snooker_elo" : "elo_rating";
+    const r1     = isSnooker ? (player1.snooker_elo ?? 1200) : player1.elo_rating;
+    const r2     = isSnooker ? (player2.snooker_elo ?? 1200) : player2.elo_rating;
+    const elo    = calcElo(r1, r2, p1Won);
+
+    const { data: match, error: mErr } = await supabase
+      .from("matches")
+      .insert({ game_type: gameType, format: "race_to", race_to: 1, played_at: new Date().toISOString(), is_deleted: false })
+      .select().single();
+    if (mErr) throw mErr;
+
+    const mpRows = [
+      {
+        match_id: match.id, player_id: player1.id, score: s1, is_winner: p1Won,
+        elo_before: r1, elo_after: elo.newA, elo_change: elo.changeA,
+        ...(isSnooker && break1 !== "" ? { highest_break: parseInt(break1) } : {}),
+      },
+      {
+        match_id: match.id, player_id: player2.id, score: s2, is_winner: !p1Won,
+        elo_before: r2, elo_after: elo.newB, elo_change: elo.changeB,
+        ...(isSnooker && break2 !== "" ? { highest_break: parseInt(break2) } : {}),
+      },
+    ];
+    const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
+    if (mpErr) throw mpErr;
+
+    const updatePlayer = async (player, won) => {
+      const newElo = won ? elo.newA : elo.newB;
+      const { data: fresh } = await supabase.from("players").select("*").eq("id", player.id).single();
+      const p = fresh || player;
+      const streak    = won ? (p.current_streak >= 0 ? p.current_streak + 1 : 1) : (p.current_streak <= 0 ? p.current_streak - 1 : -1);
+      const longestW  = won  ? Math.max(p.longest_win_streak  || 0, streak)          : (p.longest_win_streak  || 0);
+      const longestL  = !won ? Math.max(p.longest_loss_streak || 0, Math.abs(streak)) : (p.longest_loss_streak || 0);
+      await supabase.from("players").update({
+        [eloCol]: newElo,
+        total_matches:       (p.total_matches  || 0) + 1,
+        total_wins:          (p.total_wins     || 0) + (won ? 1 : 0),
+        total_losses:        (p.total_losses   || 0) + (won ? 0 : 1),
+        current_streak:      streak,
+        longest_win_streak:  longestW,
+        longest_loss_streak: longestL,
+      }).eq("id", player.id);
+    };
+
+    await updatePlayer(player1, p1Won);
+    await updatePlayer(player2, !p1Won);
+
+    setResult({
+      kind: "two",
+      p1: player1, p2: player2,
+      winner: p1Won ? player1.name : player2.name,
+      gameType, highBreak1: break1, highBreak2: break2,
+      eloChange1: elo.changeA, eloChange2: elo.changeB,
+      elo1Before: r1, elo1After: elo.newA,
+      elo2Before: r2, elo2After: elo.newB,
+    });
+  };
+
+  // ── Save — 3-player snooker path ───────────────────────────────────────────
+  const saveThree = async () => {
+    const players = [player1, player2, player3];
+    const breaks  = [Number(break1), Number(break2), Number(break3)];
+
+    // Sort descending by break score → determines 1st / 2nd / 3rd
+    const order = [0, 1, 2].sort((a, b) => breaks[b] - breaks[a]);
+    const ranked = order.map((idx, pos) => ({
+      player:     players[idx],
+      breakScore: breaks[idx],
+      rank:       pos + 1,               // 1 = winner
+    }));
+
+    const r = ranked.map(row => row.player.snooker_elo ?? 1200);
+    const { netChange, finalElo } = calcThreePlayerElo(r[0], r[1], r[2]);
+
+    // One match row (the match itself represents the 3-player session)
+    const { data: match, error: mErr } = await supabase
+      .from("matches")
+      .insert({ game_type: "Snooker", format: "race_to", race_to: 1, played_at: new Date().toISOString(), is_deleted: false })
+      .select().single();
+    if (mErr) throw mErr;
+
+    // Three match_players rows — score = break value, is_winner = rank 1 only
+    const mpRows = ranked.map((row, pos) => ({
+      match_id:    match.id,
+      player_id:   row.player.id,
+      score:       row.breakScore,
+      is_winner:   row.rank === 1,
+      elo_before:  r[pos],
+      elo_after:   finalElo[pos],
+      elo_change:  netChange[pos],
+      ...(row.breakScore > 0 ? { highest_break: row.breakScore } : {}),
+    }));
+    const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
+    if (mpErr) throw mpErr;
+
+    // Update each player's snooker_elo and shared stats
+    await Promise.all(ranked.map(async (row, pos) => {
+      const won = row.rank === 1;
+      const { data: fresh } = await supabase.from("players").select("*").eq("id", row.player.id).single();
+      const p = fresh || row.player;
+      const streak   = won ? (p.current_streak >= 0 ? p.current_streak + 1 : 1) : (p.current_streak <= 0 ? p.current_streak - 1 : -1);
+      const longestW = won  ? Math.max(p.longest_win_streak  || 0, streak)          : (p.longest_win_streak  || 0);
+      const longestL = !won ? Math.max(p.longest_loss_streak || 0, Math.abs(streak)) : (p.longest_loss_streak || 0);
+      await supabase.from("players").update({
+        snooker_elo:         finalElo[pos],
+        total_matches:       (p.total_matches  || 0) + 1,
+        total_wins:          (p.total_wins     || 0) + (won ? 1 : 0),
+        total_losses:        (p.total_losses   || 0) + (won ? 0 : 1),
+        current_streak:      streak,
+        longest_win_streak:  longestW,
+        longest_loss_streak: longestL,
+      }).eq("id", row.player.id);
+    }));
+
+    setResult({
+      kind: "three",
+      ranked: ranked.map((row, pos) => ({
+        ...row,
+        eloBefore:  r[pos],
+        eloAfter:   finalElo[pos],
+        eloChange:  netChange[pos],
+      })),
+    });
+  };
+
+  // ── Unified save entry point ───────────────────────────────────────────────
   const saveMatch = async () => {
     const err = validate();
     if (err) { setError(err); return; }
     setError(""); setSaving(true);
-
     try {
-      const p1Won = winner === "p1";
-      const s1    = p1Won ? 1 : 0;
-      const s2    = p1Won ? 0 : 1;
-
-      // ── Pick the correct ELO column for each player ──────────────────────
-      // Pool matches read/write  elo_rating
-      // Snooker matches read/write snooker_elo
-      // snooker_elo falls back to 1200 if the column is null (new players)
-      const eloCol = isSnooker ? "snooker_elo" : "elo_rating";
-
-      const r1 = isSnooker
-        ? (player1.snooker_elo ?? 1200)
-        : player1.elo_rating;
-      const r2 = isSnooker
-        ? (player2.snooker_elo ?? 1200)
-        : player2.elo_rating;
-
-      const elo = calcElo(r1, r2, p1Won);
-
-      // Insert match row
-      const { data: match, error: matchErr } = await supabase
-        .from("matches")
-        .insert({
-          game_type:  gameType,
-          format:     "race_to",
-          race_to:    1,
-          played_at:  new Date().toISOString(),
-          is_deleted: false,
-        })
-        .select()
-        .single();
-      if (matchErr) throw matchErr;
-
-      // Insert match_players rows
-      // elo_before / elo_after / elo_change always reflect the rating used for this match
-      const mpRows = [
-        {
-          match_id: match.id, player_id: player1.id, score: s1,
-          is_winner: p1Won,
-          elo_before: r1, elo_after: elo.newA, elo_change: elo.changeA,
-          ...(isSnooker && highBreak1 !== "" ? { highest_break: parseInt(highBreak1) } : {}),
-        },
-        {
-          match_id: match.id, player_id: player2.id, score: s2,
-          is_winner: !p1Won,
-          elo_before: r2, elo_after: elo.newB, elo_change: elo.changeB,
-          ...(isSnooker && highBreak2 !== "" ? { highest_break: parseInt(highBreak2) } : {}),
-        },
-      ];
-      const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
-      if (mpErr) throw mpErr;
-
-      // ── Update player stats ───────────────────────────────────────────────
-      const updatePlayer = async (player, won) => {
-        const newElo = won ? elo.newA : elo.newB;
-
-        // Re-fetch to get the latest streak values (avoid stale closure)
-        const { data: fresh } = await supabase
-          .from("players")
-          .select("*")
-          .eq("id", player.id)
-          .single();
-        const p = fresh || player;
-
-        const streak = won
-          ? (p.current_streak >= 0 ? p.current_streak + 1 : 1)
-          : (p.current_streak <= 0 ? p.current_streak - 1 : -1);
-
-        const longestWin  = won
-          ? Math.max(p.longest_win_streak  || 0, streak)
-          : (p.longest_win_streak  || 0);
-        const longestLoss = !won
-          ? Math.max(p.longest_loss_streak || 0, Math.abs(streak))
-          : (p.longest_loss_streak || 0);
-
-        await supabase.from("players").update({
-          // Write new ELO into the correct column only
-          [eloCol]:            newElo,
-
-          // Shared stats updated for both game types
-          total_matches:       (p.total_matches  || 0) + 1,
-          total_wins:          (p.total_wins     || 0) + (won ? 1 : 0),
-          total_losses:        (p.total_losses   || 0) + (won ? 0 : 1),
-          current_streak:      streak,
-          longest_win_streak:  longestWin,
-          longest_loss_streak: longestLoss,
-        }).eq("id", player.id);
-      };
-
-      await updatePlayer(player1, p1Won);
-      await updatePlayer(player2, !p1Won);
-
-      setResult({
-        p1: player1, p2: player2,
-        winner:     p1Won ? player1.name : player2.name,
-        gameType,
-        eloChange1: elo.changeA, eloChange2: elo.changeB,
-        // Pass the pre-match ratings so the result card shows the right column's before/after
-        elo1Before: r1, elo1After: elo.newA,
-        elo2Before: r2, elo2After: elo.newB,
-        highBreak1, highBreak2,
-      });
+      if (isThree) await saveThree();
+      else         await saveTwo();
     } catch (e) {
       setError(e.message || "Failed to save match.");
     } finally {
@@ -528,11 +672,15 @@ export default function RecordMatch() {
     }
   };
 
+  // ── Excluded IDs for each search box ──────────────────────────────────────
+  const excludeFor = (...others) => others.filter(Boolean).map(p => p.id);
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div style={{
       minHeight: "100vh", background: T.bg, display: "flex",
       alignItems: "flex-start", justifyContent: "center",
-      padding: "40px 16px", fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
+      padding: "40px 16px", fontFamily: "'DM Sans','Segoe UI',sans-serif",
       color: T.textPrim,
     }}>
       <style>{`
@@ -541,6 +689,7 @@ export default function RecordMatch() {
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
         input::placeholder { color: #3a4255; }
         ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: #2a3045; }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
       `}</style>
 
       <div style={{ width: "100%", maxWidth: 480 }}>
@@ -568,104 +717,136 @@ export default function RecordMatch() {
           borderRadius: 16, padding: 24, boxShadow: "0 4px 40px rgba(0,0,0,0.5)",
         }}>
           {result ? (
-            <ResultCard result={result} onReset={reset} />
-          ) : (
-            <>
-              {/* Players */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 22 }}>
-                <PlayerSearch label="Player 1" value={player1} onChange={setPlayer1} exclude={player2} />
-                <PlayerSearch label="Player 2" value={player2} onChange={setPlayer2} exclude={player1} />
+            result.kind === "three"
+              ? <ResultCard3 result={result} onReset={reset} />
+              : <ResultCard2 result={result} onReset={reset} />
+          ) : (<>
+
+            {/* ── Players ── */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: isThree ? 12 : 22 }}>
+              <PlayerSearch label="Player 1" value={player1} onChange={setPlayer1} excludeIds={excludeFor(player2, player3)} />
+              <PlayerSearch label="Player 2" value={player2} onChange={setPlayer2} excludeIds={excludeFor(player1, player3)} />
+            </div>
+
+            {/* 3rd player slot (snooker only) */}
+            {isThree && (
+              <div style={{ marginBottom: 22 }}>
+                <PlayerSearch label="Player 3" value={player3} onChange={setPlayer3} excludeIds={excludeFor(player1, player2)} />
               </div>
+            )}
 
-              <Divider />
-
-              {/* Game type */}
-              <div style={{ marginBottom: 20 }}>
-                <Label>Game Type</Label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Pill active={gameType === "Pool"}    onClick={() => handleGameType("Pool")}>🎱 Pool</Pill>
-                  <Pill active={gameType === "Snooker"} onClick={() => handleGameType("Snooker")}>🔴 Snooker</Pill>
-                </div>
+            {/* Add / Remove 3rd player button — snooker only */}
+            {isSnooker && (
+              <div style={{ marginBottom: 22 }}>
+                <button
+                  onClick={toggle3rd}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    background: "transparent",
+                    border: `1px dashed ${show3rd ? "rgba(255,77,109,0.4)" : "rgba(0,229,160,0.35)"}`,
+                    borderRadius: T.radiusSm,
+                    color: show3rd ? T.red : T.green,
+                    fontSize: 13, fontWeight: 600,
+                    padding: "9px 16px", cursor: "pointer", fontFamily: "inherit",
+                    transition: "all 0.18s", width: "100%", justifyContent: "center",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = show3rd ? T.redGlow : T.greenGlow)}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  <span style={{ fontSize: 18, lineHeight: 1 }}>{show3rd ? "−" : "+"}</span>
+                  {show3rd ? "Remove 3rd Player" : "Add 3rd Player"}
+                </button>
               </div>
+            )}
 
-              <Divider />
+            <Divider />
 
-              {/* Who won? */}
+            {/* ── Game type ── */}
+            <div style={{ marginBottom: 20 }}>
+              <Label>Game Type</Label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Pill active={gameType === "Pool"}    onClick={() => handleGameType("Pool")}>🎱 Pool</Pill>
+                <Pill active={gameType === "Snooker"} onClick={() => handleGameType("Snooker")}>🔴 Snooker</Pill>
+              </div>
+            </div>
+
+            <Divider />
+
+            {/* ── Who won? — 2-player mode only ── */}
+            {!isThree && (
               <div style={{ marginBottom: isSnooker ? 0 : 24 }}>
                 <WinButtons
-                  player1={player1}
-                  player2={player2}
-                  winner={winner}
-                  onSelect={setWinner}
+                  player1={player1} player2={player2}
+                  winner={winner} onSelect={setWinner}
                   gameType={gameType}
                 />
               </div>
+            )}
 
-              {/* Break inputs — Snooker only */}
-              {isSnooker && (
-                <>
-                  <Divider />
-                  <div style={{ marginBottom: 24 }}>
-                    <Label>Break</Label>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
-                          {player1 ? player1.name : "Player 1"}
-                        </div>
-                        <Input
-                          type="number" min="0" max="147" placeholder="0"
-                          value={highBreak1} onChange={e => setHighBreak1(e.target.value)}
-                          style={{ textAlign: "center", padding: "10px 8px" }}
-                        />
-                      </div>
-                      <div style={{ paddingTop: 20, color: T.textMuted, fontWeight: 700 }}>–</div>
-                      <div>
-                        <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 5, fontWeight: 600 }}>
-                          {player2 ? player2.name : "Player 2"}
-                        </div>
-                        <Input
-                          type="number" min="0" max="147" placeholder="0"
-                          value={highBreak2} onChange={e => setHighBreak2(e.target.value)}
-                          style={{ textAlign: "center", padding: "10px 8px" }}
-                        />
-                      </div>
+            {/* ── Break / score inputs ── */}
+            {isSnooker && (
+              <>
+                <Divider />
+                <div style={{ marginBottom: 24 }}>
+                  <Label>
+                    {isThree ? "Break Score (determines ranking)" : "Break"}
+                  </Label>
+
+                  {isThree ? (
+                    /* 3-player: one input per player, stacked */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <BreakInput playerName={player1?.name ?? "Player 1"} value={break1} onChange={setBreak1} />
+                      <BreakInput playerName={player2?.name ?? "Player 2"} value={break2} onChange={setBreak2} />
+                      <BreakInput playerName={player3?.name ?? "Player 3"} value={break3} onChange={setBreak3} />
                     </div>
-                  </div>
-                </>
-              )}
+                  ) : (
+                    /* 2-player: side-by-side as before */
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
+                      <BreakInput playerName={player1?.name ?? "Player 1"} value={break1} onChange={setBreak1} />
+                      <div style={{ paddingTop: 20, color: T.textMuted, fontWeight: 700 }}>–</div>
+                      <BreakInput playerName={player2?.name ?? "Player 2"} value={break2} onChange={setBreak2} />
+                    </div>
+                  )}
 
-              {/* Error */}
-              {error && (
-                <div style={{
-                  background: "rgba(255,77,109,0.1)", border: `1px solid rgba(255,77,109,0.3)`,
-                  borderRadius: T.radiusSm, padding: "10px 14px",
-                  color: T.red, fontSize: 13, marginBottom: 16, fontWeight: 500,
-                }}>
-                  {error}
+                  {isThree && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: T.textMuted, lineHeight: 1.5 }}>
+                      Highest break = 1st place. ELO is calculated via three 1v1 duels.
+                    </div>
+                  )}
                 </div>
-              )}
+              </>
+            )}
 
-              {/* Save */}
-              <button
-                onClick={saveMatch}
-                disabled={saving}
-                style={{
-                  width: "100%", padding: "14px", borderRadius: T.radius,
-                  background: saving ? T.surface : T.green,
-                  border: saving ? `1px solid ${T.border}` : "none",
-                  color: saving ? T.textMuted : "#000",
-                  fontWeight: 800, fontSize: 15, letterSpacing: "0.04em",
-                  cursor: saving ? "not-allowed" : "pointer",
-                  fontFamily: "inherit", transition: "all 0.2s",
-                  boxShadow: saving ? "none" : `0 0 24px ${T.greenGlow}`,
-                }}
-                onMouseEnter={e => { if (!saving) e.target.style.opacity = 0.88; }}
-                onMouseLeave={e => { e.target.style.opacity = 1; }}
-              >
-                {saving ? "Saving…" : "Save Match"}
-              </button>
-            </>
-          )}
+            {/* Error */}
+            {error && (
+              <div style={{
+                background: "rgba(255,77,109,0.1)", border: `1px solid rgba(255,77,109,0.3)`,
+                borderRadius: T.radiusSm, padding: "10px 14px",
+                color: T.red, fontSize: 13, marginBottom: 16, fontWeight: 500,
+              }}>
+                {error}
+              </div>
+            )}
+
+            {/* Save */}
+            <button
+              onClick={saveMatch} disabled={saving}
+              style={{
+                width: "100%", padding: "14px", borderRadius: T.radius,
+                background: saving ? T.surface : T.green,
+                border: saving ? `1px solid ${T.border}` : "none",
+                color: saving ? T.textMuted : "#000",
+                fontWeight: 800, fontSize: 15, letterSpacing: "0.04em",
+                cursor: saving ? "not-allowed" : "pointer",
+                fontFamily: "inherit", transition: "all 0.2s",
+                boxShadow: saving ? "none" : `0 0 24px ${T.greenGlow}`,
+              }}
+              onMouseEnter={e => { if (!saving) e.target.style.opacity = 0.88; }}
+              onMouseLeave={e => { e.target.style.opacity = 1; }}
+            >
+              {saving ? "Saving…" : "Save Match"}
+            </button>
+          </>)}
         </div>
 
         <div style={{ textAlign: "center", marginTop: 16, color: T.textMuted, fontSize: 12 }}>
