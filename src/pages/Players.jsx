@@ -502,7 +502,7 @@ export default function Players() {
         .from("match_players")
         .select(`player_id, is_winner, highest_break, players!inner(name), matches!inner(game_type)`)
         .eq("group_id", groupId)
-        .eq("matches.game_type", "snooker");
+        .eq("matches.game_type", "Snooker");
       if (error) throw error;
 
       const map = {};
