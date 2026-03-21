@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase.js";
+import { useAuth } from "../context/AuthContext";
 
 // ─── ELO ─────────────────────────────────────────────────────────────────────
 function calcElo(ratingA, ratingB, aWon, K = 32) {
@@ -105,7 +106,7 @@ const Divider = () => (
 );
 
 // ─── PLAYER SEARCH ───────────────────────────────────────────────────────────
-function PlayerSearch({ label, value, onChange, excludeIds = [] }) {
+function PlayerSearch({ label, value, onChange, excludeIds = [], groupId }) {
   const [query,   setQuery]   = useState("");
   const [results, setResults] = useState([]);
   const [open,    setOpen]    = useState(false);
@@ -156,6 +157,7 @@ function PlayerSearch({ label, value, onChange, excludeIds = [] }) {
         name, elo_rating: 1200, snooker_elo: 1200,
         total_matches: 0, total_wins: 0, total_losses: 0,
         current_streak: 0, longest_win_streak: 0, longest_loss_streak: 0,
+        group_id: groupId,
       })
       .select()
       .single();
@@ -481,6 +483,8 @@ export default function RecordMatch() {
 
   const isSnooker  = gameType === "Snooker";
   const isThree    = isSnooker && show3rd;
+  const { group }  = useAuth();
+  const groupId    = group?.id;
 
   // ── Reset helpers ──────────────────────────────────────────────────────────
   const handleGameType = type => {
@@ -539,7 +543,7 @@ export default function RecordMatch() {
 
     const { data: match, error: mErr } = await supabase
       .from("matches")
-      .insert({ game_type: gameType, format: "race_to", race_to: 1, played_at: new Date().toISOString(), is_deleted: false })
+      .insert({ game_type: gameType, format: "race_to", race_to: 1, played_at: new Date().toISOString(), is_deleted: false, group_id: groupId })
       .select().single();
     if (mErr) throw mErr;
 
@@ -547,11 +551,13 @@ export default function RecordMatch() {
       {
         match_id: match.id, player_id: player1.id, score: s1, is_winner: p1Won,
         elo_before: r1, elo_after: elo.newA, elo_change: elo.changeA,
+        group_id: groupId,
         ...(isSnooker && break1 !== "" ? { highest_break: parseInt(break1) } : {}),
       },
       {
         match_id: match.id, player_id: player2.id, score: s2, is_winner: !p1Won,
         elo_before: r2, elo_after: elo.newB, elo_change: elo.changeB,
+        group_id: groupId,
         ...(isSnooker && break2 !== "" ? { highest_break: parseInt(break2) } : {}),
       },
     ];
@@ -609,7 +615,7 @@ export default function RecordMatch() {
     // One match row (the match itself represents the 3-player session)
     const { data: match, error: mErr } = await supabase
       .from("matches")
-      .insert({ game_type: "Snooker", format: "race_to", race_to: 1, played_at: new Date().toISOString(), is_deleted: false })
+      .insert({ game_type: "Snooker", format: "race_to", race_to: 1, played_at: new Date().toISOString(), is_deleted: false, group_id: groupId })
       .select().single();
     if (mErr) throw mErr;
 
@@ -622,6 +628,7 @@ export default function RecordMatch() {
       elo_before:  r[pos],
       elo_after:   finalElo[pos],
       elo_change:  netChange[pos],
+      group_id:    groupId,
       ...(row.breakScore > 0 ? { highest_break: row.breakScore } : {}),
     }));
     const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
@@ -724,14 +731,14 @@ export default function RecordMatch() {
 
             {/* ── Players ── */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: isThree ? 12 : 22 }}>
-              <PlayerSearch label="Player 1" value={player1} onChange={setPlayer1} excludeIds={excludeFor(player2, player3)} />
-              <PlayerSearch label="Player 2" value={player2} onChange={setPlayer2} excludeIds={excludeFor(player1, player3)} />
+              <PlayerSearch label="Player 1" value={player1} onChange={setPlayer1} excludeIds={excludeFor(player2, player3)} groupId={groupId} />
+              <PlayerSearch label="Player 2" value={player2} onChange={setPlayer2} excludeIds={excludeFor(player1, player3)} groupId={groupId} />
             </div>
 
             {/* 3rd player slot (snooker only) */}
             {isThree && (
               <div style={{ marginBottom: 22 }}>
-                <PlayerSearch label="Player 3" value={player3} onChange={setPlayer3} excludeIds={excludeFor(player1, player2)} />
+                <PlayerSearch label="Player 3" value={player3} onChange={setPlayer3} excludeIds={excludeFor(player1, player2)} groupId={groupId} />
               </div>
             )}
 

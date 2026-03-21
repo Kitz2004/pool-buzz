@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase.js';
+import { useAuth } from '../context/AuthContext';
 
 const FILTERS = ['All', 'Pool', 'Snooker'];
 
@@ -283,6 +284,9 @@ export default function History() {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('All');
 
+  const { group } = useAuth();
+  const groupId   = group?.id;
+
   useEffect(() => {
     async function fetchMatches() {
       setLoading(true);
@@ -311,6 +315,7 @@ export default function History() {
               )
             )
           `)
+          .eq('group_id', groupId)
           .eq('is_deleted', false)
           .order('played_at', { ascending: false });
 
@@ -323,8 +328,8 @@ export default function History() {
       }
     }
 
-    fetchMatches();
-  }, []);
+    if (groupId) fetchMatches();
+  }, [groupId]);
 
   // Normalise game_type to lowercase once so every comparison is case-insensitive.
   // Handles values saved as "snooker", "Snooker", "SNOOKER", etc.
