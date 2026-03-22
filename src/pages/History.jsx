@@ -2,317 +2,379 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../supabase.js';
 import { useAuth } from '../context/AuthContext';
 
+// ─── THEME (matches Pool Buzz design system) ──────────────────────────────────
+const T = {
+  bg:        "#090b0f",
+  surface:   "#0f1218",
+  card:      "#141820",
+  border:    "rgba(255,255,255,0.06)",
+  borderHi:  "rgba(255,255,255,0.11)",
+  green:     "#00e5a0",
+  greenGlow: "rgba(0,229,160,0.08)",
+  red:       "#ff4d6d",
+  redGlow:   "rgba(255,77,109,0.08)",
+  gold:      "#ffc53d",
+  text:      "#edf1f7",
+  textSec:   "#7c8799",
+  textMuted: "#4a5263",
+  textFaint: "#2e3545",
+  winText:   "#00e5a0",
+  winBg:     "rgba(0,229,160,0.08)",
+};
+
 const FILTERS = ['All', 'Pool', 'Snooker'];
 
-const styles = {
-  root: {
-    minHeight: '100vh',
-    background: 'linear-gradient(160deg, #0a0e1a 0%, #0f1623 50%, #0c1219 100%)',
-    fontFamily: "'DM Mono', 'Fira Mono', 'Courier New', monospace",
-    color: '#e2e8f0',
-    padding: '0 0 60px 0',
-  },
-  header: {
-    padding: '36px 28px 0 28px',
-    borderBottom: '1px solid rgba(99,179,237,0.10)',
-    marginBottom: '0',
-    background: 'rgba(10,14,26,0.7)',
-    backdropFilter: 'blur(12px)',
-    position: 'sticky',
-    top: 0,
-    zIndex: 10,
-  },
-  titleRow: {
-    display: 'flex',
-    alignItems: 'flex-end',
-    gap: '14px',
-    marginBottom: '18px',
-  },
-  title: {
-    fontSize: '28px',
-    fontWeight: '700',
-    letterSpacing: '-0.5px',
-    color: '#f0f6ff',
-    margin: 0,
-    lineHeight: 1,
-    fontFamily: "'DM Mono', monospace",
-  },
-  titleAccent: {
-    color: '#38bdf8',
-  },
-  matchCount: {
-    fontSize: '13px',
-    color: '#64748b',
-    fontVariantNumeric: 'tabular-nums',
-    paddingBottom: '2px',
-    letterSpacing: '0.04em',
-  },
-  filterBar: {
-    display: 'flex',
-    gap: '6px',
-    paddingBottom: '18px',
-  },
-  filterBtn: (active) => ({
-    padding: '6px 18px',
-    borderRadius: '20px',
-    border: active ? '1.5px solid #38bdf8' : '1.5px solid rgba(99,179,237,0.18)',
-    background: active
-      ? 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)'
-      : 'rgba(14,20,36,0.7)',
-    color: active ? '#f0f6ff' : '#64748b',
-    fontFamily: 'inherit',
-    fontSize: '12px',
-    fontWeight: active ? '700' : '400',
-    letterSpacing: '0.08em',
-    cursor: 'pointer',
-    transition: 'all 0.18s ease',
-    outline: 'none',
-    textTransform: 'uppercase',
-  }),
-  body: {
-    padding: '24px 20px 0 20px',
-    maxWidth: '720px',
-    margin: '0 auto',
-  },
-  card: {
-    background: 'linear-gradient(135deg, rgba(17,25,44,0.92) 0%, rgba(14,20,36,0.97) 100%)',
-    border: '1px solid rgba(56,189,248,0.10)',
-    borderRadius: '16px',
-    marginBottom: '14px',
-    overflow: 'hidden',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
-    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-    position: 'relative',
-  },
-  // isSnooker now receives the already-computed boolean
-  cardTopBar: (isSnooker) => ({
-    height: '3px',
-    background: isSnooker
-      ? 'linear-gradient(90deg, #f43f5e, #be123c)'   // red for snooker
-      : 'linear-gradient(90deg, #38bdf8, #2563eb)',   // blue for pool
-    width: '100%',
-  }),
-  cardInner: {
-    padding: '16px 20px 18px 20px',
-  },
-  cardMeta: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: '14px',
-  },
-  // isSnooker boolean passed in directly
-  gameTypeBadge: (isSnooker) => ({
-    fontSize: '10px',
-    fontWeight: '700',
-    letterSpacing: '0.12em',
-    textTransform: 'uppercase',
-    padding: '3px 10px',
-    borderRadius: '20px',
-    background: isSnooker
-      ? 'rgba(244,63,94,0.13)'        // red tint for snooker
-      : 'rgba(56,189,248,0.12)',       // blue tint for pool
-    color: isSnooker ? '#fb7185' : '#38bdf8',
-    border: isSnooker
-      ? '1px solid rgba(244,63,94,0.30)'
-      : '1px solid rgba(56,189,248,0.22)',
-  }),
-  dateTime: {
-    fontSize: '11px',
-    color: '#475569',
-    letterSpacing: '0.04em',
-  },
-  playersRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0',
-  },
-  playerBlock: (isWinner) => ({
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: isWinner ? 'flex-start' : 'flex-end',
-    gap: '5px',
-    position: 'relative',
-  }),
-  playerName: (isWinner) => ({
-    fontSize: '15px',
-    fontWeight: isWinner ? '700' : '400',
-    color: isWinner ? '#f0fdf4' : '#94a3b8',
-    letterSpacing: '-0.01em',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '5px',
-  }),
-  winnerIcon: {
-    fontSize: '13px',
-  },
-  eloChange: (change) => ({
-    fontSize: '12px',
-    fontWeight: '600',
-    color: change > 0 ? '#4ade80' : change < 0 ? '#f87171' : '#64748b',
-    letterSpacing: '0.03em',
-  }),
-  highestBreak: {
-    fontSize: '11px',
-    color: '#fbbf24',
-    letterSpacing: '0.04em',
-  },
-  scorePill: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0',
-    background: 'rgba(0,0,0,0.3)',
-    border: '1px solid rgba(99,179,237,0.12)',
-    borderRadius: '12px',
-    padding: '6px 0',
-    minWidth: '80px',
-    justifyContent: 'center',
-    margin: '0 12px',
-    flexShrink: 0,
-  },
-  scoreNum: (isWinner) => ({
-    fontSize: '22px',
-    fontWeight: '800',
-    color: isWinner ? '#38bdf8' : '#334155',
-    fontVariantNumeric: 'tabular-nums',
-    width: '28px',
-    textAlign: 'center',
-    lineHeight: 1,
-  }),
-  scoreDivider: {
-    color: '#1e293b',
-    fontSize: '16px',
-    fontWeight: '300',
-    margin: '0 2px',
-  },
-  poolWinnerBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '7px',
-    background: 'rgba(56,189,248,0.08)',
-    border: '1px solid rgba(56,189,248,0.20)',
-    borderRadius: '12px',
-    padding: '7px 14px',
-    margin: '0 12px',
-    flexShrink: 0,
-  },
-  poolWinnerName: {
-    fontSize: '13px',
-    fontWeight: '700',
-    color: '#38bdf8',
-    letterSpacing: '-0.01em',
-    whiteSpace: 'nowrap',
-  },
-  poolWBadge: {
-    fontSize: '10px',
-    fontWeight: '800',
-    letterSpacing: '0.1em',
-    color: '#0f172a',
-    background: '#38bdf8',
-    borderRadius: '6px',
-    padding: '2px 6px',
-    lineHeight: 1.4,
-  },
-  emptyState: {
-    textAlign: 'center',
-    padding: '80px 20px',
-    color: '#334155',
-  },
-  emptyIcon: {
-    fontSize: '52px',
-    marginBottom: '16px',
-    display: 'block',
-    filter: 'grayscale(0.4)',
-  },
-  emptyTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: '8px',
-  },
-  emptySubtitle: {
-    fontSize: '13px',
-    color: '#334155',
-  },
-  loadingRow: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '14px',
-    marginTop: '4px',
-  },
-  skeletonCard: {
-    height: '120px',
-    borderRadius: '16px',
-    background: 'linear-gradient(90deg, rgba(17,25,44,0.8) 0%, rgba(30,41,59,0.5) 50%, rgba(17,25,44,0.8) 100%)',
-    backgroundSize: '200% 100%',
-    animation: 'shimmer 1.4s infinite',
-    border: '1px solid rgba(56,189,248,0.07)',
-  },
-  errorBox: {
-    margin: '32px auto',
-    maxWidth: '400px',
-    background: 'rgba(127,29,29,0.3)',
-    border: '1px solid rgba(248,113,113,0.2)',
-    borderRadius: '12px',
-    padding: '20px 24px',
-    color: '#fca5a5',
-    fontSize: '13px',
-    textAlign: 'center',
-  },
-};
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const normalise = gt => (gt || '').toLowerCase();
 
 function formatDateTime(dateStr) {
   if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  return d.toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  });
+  const d   = new Date(dateStr);
+  const pad = n => String(n).padStart(2, '0');
+  const day   = pad(d.getDate());
+  const month = d.toLocaleString('default', { month: 'short' });
+  const year  = d.getFullYear();
+  const h     = d.getHours();
+  const min   = pad(d.getMinutes());
+  const ampm  = h >= 12 ? 'pm' : 'am';
+  const hour  = h % 12 || 12;
+  return `${day} ${month} ${year} · ${hour}:${min}${ampm}`;
 }
 
-function formatEloChange(change) {
+function fmtElo(change) {
   if (change == null) return null;
   const n = Number(change);
-  if (n > 0) return `+${n}`;
-  return `${n}`;
+  return (n > 0 ? '+' : '') + n;
 }
 
+// ─── GLOBAL CSS ───────────────────────────────────────────────────────────────
+const GLOBAL_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500;600&display=swap');
+
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
+  }
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .hist-card {
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+  .hist-card:hover {
+    border-color: rgba(255,255,255,0.11) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+  }
+
+  @media (max-width: 520px) {
+    .hist-header { padding: 22px 14px 0 !important; }
+    .hist-body   { padding: 16px 12px 0 !important; }
+    .hist-title  { font-size: 22px !important; }
+  }
+`;
+
+// ─── SKELETON LOADING ─────────────────────────────────────────────────────────
+function SkeletonCards() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+      {[110, 110, 100].map((h, i) => (
+        <div key={i} style={{
+          height: h, borderRadius: 14,
+          background: 'linear-gradient(90deg, rgba(20,24,32,0.9) 0%, rgba(30,36,48,0.5) 50%, rgba(20,24,32,0.9) 100%)',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 1.5s infinite',
+          border: `1px solid ${T.border}`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+// ─── EMPTY STATE ──────────────────────────────────────────────────────────────
+function EmptyState({ filter }) {
+  const isFiltered = filter !== 'All';
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '80px 24px', gap: 16, textAlign: 'center',
+    }}>
+      <div style={{
+        width: 72, height: 72, borderRadius: 20,
+        background: 'rgba(255,255,255,0.03)',
+        border: `1px solid ${T.border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 32,
+      }}>
+        {filter === 'Snooker' ? '🔴' : '🎱'}
+      </div>
+      <div>
+        <div style={{
+          color: T.text, fontWeight: 700, fontSize: 16, marginBottom: 6,
+          fontFamily: "'DM Sans', sans-serif",
+        }}>
+          {isFiltered ? `No ${filter} matches yet` : 'No matches yet'}
+        </div>
+        <div style={{ color: T.textMuted, fontSize: 13, lineHeight: 1.6, maxWidth: 260 }}>
+          {isFiltered
+            ? `Switch to "All" or record a ${filter} match to see results.`
+            : 'Start playing and your match history will appear here.'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PLAYER SIDE ──────────────────────────────────────────────────────────────
+function PlayerSide({ mp, isSnooker, align }) {
+  if (!mp) return <div style={{ flex: 1 }} />;
+  const isWinner = !!mp.is_winner;
+  const name     = mp.players?.name ?? `Player ${mp.player_id}`;
+  const eloStr   = fmtElo(mp.elo_change);
+  const eloNum   = Number(mp.elo_change);
+
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column',
+      alignItems: align === 'left' ? 'flex-start' : 'flex-end',
+      gap: 4, minWidth: 0,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        flexDirection: align === 'left' ? 'row' : 'row-reverse',
+      }}>
+        {isWinner && <span style={{ fontSize: 12, flexShrink: 0 }}>🏆</span>}
+        <span style={{
+          fontSize: 14, fontWeight: isWinner ? 700 : 500,
+          color: isWinner ? T.text : T.textSec,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          fontFamily: "'DM Sans', sans-serif",
+        }}>
+          {name}
+        </span>
+      </div>
+      {eloStr != null && (
+        <span style={{
+          fontSize: 11, fontWeight: 600,
+          color: eloNum > 0 ? T.winText : eloNum < 0 ? T.red : T.textMuted,
+          fontFamily: "'DM Mono', monospace",
+        }}>
+          {eloStr} ELO
+        </span>
+      )}
+      {isSnooker && mp.highest_break != null && (
+        <span style={{
+          fontSize: 11, color: T.gold, fontWeight: 600,
+          fontFamily: "'DM Mono', monospace",
+        }}>
+          🎱 {mp.highest_break}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── CENTRE WIDGET ────────────────────────────────────────────────────────────
+function CentreWidget({ match, isSnooker, p1, p2 }) {
+  const winner     = [p1, p2].find(p => p?.is_winner);
+  const winnerName = winner?.players?.name ?? '—';
+
+  if (isSnooker) {
+    return (
+      <div style={{
+        flexShrink: 0, display: 'flex', alignItems: 'center',
+        gap: 4, margin: '0 10px',
+        background: 'rgba(0,0,0,0.25)',
+        border: `1px solid ${T.border}`,
+        borderRadius: 10, padding: '6px 10px',
+      }}>
+        <span style={{
+          fontSize: 20, fontWeight: 800,
+          color: p1?.is_winner ? T.text : T.textFaint,
+          fontFamily: "'DM Mono', monospace",
+          fontVariantNumeric: 'tabular-nums',
+          width: 22, textAlign: 'center', lineHeight: 1,
+        }}>
+          {p1?.score ?? '?'}
+        </span>
+        <span style={{ color: T.textFaint, fontSize: 14, fontWeight: 300 }}>–</span>
+        <span style={{
+          fontSize: 20, fontWeight: 800,
+          color: p2?.is_winner ? T.text : T.textFaint,
+          fontFamily: "'DM Mono', monospace",
+          fontVariantNumeric: 'tabular-nums',
+          width: 22, textAlign: 'center', lineHeight: 1,
+        }}>
+          {p2?.score ?? '?'}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      flexShrink: 0, display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      gap: 3, margin: '0 10px',
+      background: T.winBg,
+      border: `1px solid rgba(0,229,160,0.18)`,
+      borderRadius: 10, padding: '7px 12px',
+    }}>
+      <span style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+        textTransform: 'uppercase', color: T.winText,
+        fontFamily: "'DM Mono', monospace",
+      }}>
+        Winner
+      </span>
+      <span style={{
+        fontSize: 13, fontWeight: 700, color: T.winText,
+        whiteSpace: 'nowrap', fontFamily: "'DM Sans', sans-serif",
+      }}>
+        {winnerName}
+      </span>
+    </div>
+  );
+}
+
+// ─── 3-PLAYER LAYOUT ─────────────────────────────────────────────────────────
+function ThreePlayerMatch({ players }) {
+  const sorted = [...players].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  const ranks  = ['🥇', '🥈', '🥉'];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {sorted.map((mp, i) => {
+        const name   = mp.players?.name ?? `Player ${mp.player_id}`;
+        const eloStr = fmtElo(mp.elo_change);
+        const eloNum = Number(mp.elo_change);
+        return (
+          <div key={mp.id} style={{
+            display: 'grid', gridTemplateColumns: '24px 1fr auto auto',
+            alignItems: 'center', gap: 10,
+            background: i === 0 ? 'rgba(255,197,61,0.04)' : 'transparent',
+            borderRadius: 8, padding: '6px 4px',
+          }}>
+            <span style={{ fontSize: 15, lineHeight: 1, textAlign: 'center' }}>{ranks[i]}</span>
+            <span style={{
+              fontSize: 13, fontWeight: i === 0 ? 700 : 500,
+              color: i === 0 ? T.text : T.textSec,
+              fontFamily: "'DM Sans', sans-serif",
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {name}
+            </span>
+            {mp.highest_break != null && (
+              <span style={{
+                fontSize: 11, color: T.gold, fontWeight: 600,
+                fontFamily: "'DM Mono', monospace",
+              }}>
+                🎱 {mp.highest_break}
+              </span>
+            )}
+            {eloStr != null && (
+              <span style={{
+                fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                color: eloNum > 0 ? T.winText : eloNum < 0 ? T.red : T.textMuted,
+                fontFamily: "'DM Mono', monospace",
+              }}>
+                {eloStr}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── MATCH CARD ───────────────────────────────────────────────────────────────
+function MatchCard({ match, index }) {
+  const isSnooker = normalise(match.game_type) === 'snooker';
+  const players   = match.match_players || [];
+  const isThree   = players.length > 2;
+  const sorted    = [...players].sort((a, b) => (b.is_winner ? 1 : 0) - (a.is_winner ? 1 : 0));
+  const p1 = sorted[0];
+  const p2 = sorted[1];
+
+  return (
+    <div className="hist-card" style={{
+      background: T.card,
+      border: `1px solid ${T.border}`,
+      borderRadius: 14, overflow: 'hidden',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+      animation: 'fadeSlide 0.25s ease both',
+      animationDelay: `${Math.min(index * 30, 200)}ms`,
+    }}>
+      {/* Top accent bar */}
+      <div style={{
+        height: 2,
+        background: isSnooker
+          ? 'linear-gradient(90deg, #ff4d6d, #c2185b)'
+          : 'linear-gradient(90deg, #00e5a0, #00b87e)',
+      }} />
+
+      <div style={{ padding: '13px 15px 15px' }}>
+        {/* Meta row */}
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', marginBottom: 12,
+        }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
+            textTransform: 'uppercase', padding: '3px 9px', borderRadius: 20,
+            background: isSnooker ? T.redGlow : T.greenGlow,
+            color: isSnooker ? T.red : T.green,
+            border: `1px solid ${isSnooker ? 'rgba(255,77,109,0.22)' : 'rgba(0,229,160,0.2)'}`,
+            fontFamily: "'DM Mono', monospace",
+          }}>
+            {isSnooker ? '🔴 Snooker' : '🎱 Pool'}{isThree ? ' · 3P' : ''}
+          </span>
+          <span style={{
+            fontSize: 11, color: T.textMuted,
+            fontFamily: "'DM Mono', monospace",
+          }}>
+            {formatDateTime(match.played_at)}
+          </span>
+        </div>
+
+        {/* Players section */}
+        {isThree ? (
+          <ThreePlayerMatch players={players} />
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <PlayerSide mp={p1} isSnooker={isSnooker} align="left" />
+            <CentreWidget match={match} isSnooker={isSnooker} p1={p1} p2={p2} />
+            <PlayerSide mp={p2} isSnooker={isSnooker} align="right" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function History() {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('All');
+  const [error,   setError]   = useState(null);
+  const [filter,  setFilter]  = useState('All');
 
   const { group } = useAuth();
   const groupId   = group?.id;
 
   useEffect(() => {
     async function fetchMatches() {
-      setLoading(true);
-      setError(null);
+      setLoading(true); setError(null);
       try {
         const { data, error: sbError } = await supabase
           .from('matches')
           .select(`
-            id,
-            game_type,
-            played_at,
-            is_deleted,
+            id, game_type, played_at, is_deleted,
             match_players (
-              id,
-              player_id,
-              score,
-              is_winner,
-              elo_before,
-              elo_after,
-              elo_change,
-              highest_break,
-              players (
-                id,
-                name,
-                elo_rating
-              )
+              id, player_id, score, is_winner,
+              elo_before, elo_after, elo_change, highest_break,
+              players ( id, name, elo_rating )
             )
           `)
           .eq('group_id', groupId)
@@ -327,187 +389,115 @@ export default function History() {
         setLoading(false);
       }
     }
-
     if (groupId) fetchMatches();
   }, [groupId]);
 
-  // Normalise game_type to lowercase once so every comparison is case-insensitive.
-  // Handles values saved as "snooker", "Snooker", "SNOOKER", etc.
-  const normalise = (gt) => (gt || '').toLowerCase();
+  const filtered = matches.filter(m =>
+    filter === 'All' || normalise(m.game_type) === filter.toLowerCase()
+  );
 
-  const filtered = matches.filter((m) => {
-    if (filter === 'All') return true;
-    return normalise(m.game_type) === filter.toLowerCase();
-  });
-
-  const poolCount    = matches.filter((m) => normalise(m.game_type) === 'pool').length;
-  const snookerCount = matches.filter((m) => normalise(m.game_type) === 'snooker').length;
+  const poolCount    = matches.filter(m => normalise(m.game_type) === 'pool').length;
+  const snookerCount = matches.filter(m => normalise(m.game_type) === 'snooker').length;
 
   return (
-    <div style={styles.root}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;700&display=swap');
-        @keyframes shimmer {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-        *:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
-      `}</style>
+    <div style={{
+      minHeight: '100vh',
+      background: T.bg,
+      backgroundImage: [
+        'radial-gradient(ellipse 80% 35% at 50% 0%, rgba(0,229,160,0.04) 0%, transparent 60%)',
+        'repeating-linear-gradient(0deg, transparent, transparent 59px, rgba(255,255,255,0.012) 60px)',
+        'repeating-linear-gradient(90deg, transparent, transparent 59px, rgba(255,255,255,0.012) 60px)',
+      ].join(', '),
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      color: T.text,
+      paddingBottom: 80,
+    }}>
+      <style>{GLOBAL_CSS}</style>
 
-      {/* Sticky Header */}
-      <div style={styles.header}>
-        <div style={{ maxWidth: '720px', margin: '0 auto' }}>
-          <div style={styles.titleRow}>
-            <h1 style={styles.title}>
-              <span style={styles.titleAccent}>●</span> Match History
+      {/* ── Sticky header ── */}
+      <div className="hist-header" style={{
+        padding: '26px 22px 0',
+        borderBottom: `1px solid ${T.border}`,
+        background: 'rgba(9,11,15,0.92)',
+        backdropFilter: 'blur(16px)',
+        position: 'sticky', top: 0, zIndex: 10,
+      }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          {/* Title + count */}
+          <div style={{
+            display: 'flex', alignItems: 'baseline',
+            gap: 10, marginBottom: 14, flexWrap: 'wrap',
+          }}>
+            <h1 className="hist-title" style={{
+              fontSize: 28, fontWeight: 900, letterSpacing: '-0.03em',
+              color: T.text, margin: 0, lineHeight: 1,
+              fontFamily: "'DM Sans', sans-serif",
+            }}>
+              History
             </h1>
             {!loading && !error && (
-              <span style={styles.matchCount}>
-                {matches.length} match{matches.length !== 1 ? 'es' : ''} total
-                {poolCount > 0 && ` · ${poolCount} Pool`}
+              <span style={{
+                fontSize: 12, color: T.textMuted,
+                fontFamily: "'DM Mono', monospace",
+              }}>
+                {matches.length} match{matches.length !== 1 ? 'es' : ''}
+                {poolCount    > 0 && ` · ${poolCount} Pool`}
                 {snookerCount > 0 && ` · ${snookerCount} Snooker`}
               </span>
             )}
           </div>
-          <div style={styles.filterBar}>
-            {FILTERS.map((f) => (
-              <button
-                key={f}
-                style={styles.filterBtn(filter === f)}
-                onClick={() => setFilter(f)}
-              >
-                {f}
-              </button>
-            ))}
+
+          {/* Filter pills */}
+          <div style={{ display: 'flex', gap: 6, paddingBottom: 14 }}>
+            {FILTERS.map(f => {
+              const active = filter === f;
+              return (
+                <button key={f} onClick={() => setFilter(f)} style={{
+                  padding: '6px 16px', borderRadius: 999, border: 'none',
+                  cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                  fontSize: 12, fontWeight: 700, letterSpacing: '0.06em',
+                  textTransform: 'uppercase', transition: 'all 0.18s ease',
+                  background: active ? T.green : 'rgba(255,255,255,0.04)',
+                  color: active ? '#071a13' : T.textMuted,
+                  boxShadow: active ? '0 0 14px rgba(0,229,160,0.18)' : 'none',
+                  outline: active ? 'none' : `1px solid ${T.border}`,
+                }}>
+                  {f === 'Pool' ? '🎱 ' : f === 'Snooker' ? '🔴 ' : ''}{f}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* Body */}
-      <div style={styles.body}>
-        {loading && (
-          <div style={styles.loadingRow}>
-            {[1, 2, 3].map((i) => (
-              <div key={i} style={styles.skeletonCard} />
-            ))}
-          </div>
-        )}
+      {/* ── Body ── */}
+      <div className="hist-body" style={{ padding: '18px 20px 0', maxWidth: 720, margin: '0 auto' }}>
+        {loading && <SkeletonCards />}
 
         {error && (
-          <div style={styles.errorBox}>
-            ⚠ {error}
+          <div style={{
+            margin: '32px auto', maxWidth: 400,
+            background: 'rgba(255,77,109,0.07)',
+            border: '1px solid rgba(255,77,109,0.2)',
+            borderRadius: 12, padding: '16px 20px',
+            color: T.red, fontSize: 13, textAlign: 'center',
+            display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center',
+          }}>
+            <span>⚠</span> {error}
           </div>
         )}
 
         {!loading && !error && filtered.length === 0 && (
-          <div style={styles.emptyState}>
-            <span style={styles.emptyIcon}>🎱</span>
-            <div style={styles.emptyTitle}>
-              {filter === 'All'
-                ? 'No matches yet'
-                : `No ${filter} matches found`}
-            </div>
-            <div style={styles.emptySubtitle}>
-              {filter === 'All'
-                ? 'Start playing and your match history will appear here.'
-                : `Switch to "All" or log a ${filter} match to see results.`}
-            </div>
-          </div>
+          <EmptyState filter={filter} />
         )}
 
-        {!loading && !error && filtered.map((match) => {
-          const players = match.match_players || [];
-          // Sort so winner is always first (left)
-          const sorted = [...players].sort((a, b) => (b.is_winner ? 1 : 0) - (a.is_winner ? 1 : 0));
-          const p1 = sorted[0];
-          const p2 = sorted[1];
-
-          // Single normalised check — works regardless of how the value was stored
-          const isSnooker = normalise(match.game_type) === 'snooker';
-
-          const winner = sorted.find((p) => p.is_winner);
-          const winnerName = winner?.players?.name ?? `Player ${winner?.player_id}`;
-
-          return (
-            <div key={match.id} style={styles.card}>
-              {/* Top colour bar: red for snooker, blue for pool */}
-              <div style={styles.cardTopBar(isSnooker)} />
-              <div style={styles.cardInner}>
-                {/* Meta row */}
-                <div style={styles.cardMeta}>
-                  <span style={styles.gameTypeBadge(isSnooker)}>
-                    {isSnooker ? '🔴 Snooker' : '🎱 Pool'}
-                  </span>
-                  <span style={styles.dateTime}>
-                    {formatDateTime(match.played_at)}
-                  </span>
-                </div>
-
-                {/* Players + Score/Winner */}
-                <div style={styles.playersRow}>
-                  {/* Player 1 (winner) — left aligned */}
-                  {p1 && (
-                    <div style={styles.playerBlock(true)}>
-                      <span style={styles.playerName(true)}>
-                        {p1.is_winner && <span style={styles.winnerIcon}>🏆</span>}
-                        {p1.players?.name ?? `Player ${p1.player_id}`}
-                      </span>
-                      {p1.elo_change != null && (
-                        <span style={styles.eloChange(Number(p1.elo_change))}>
-                          {formatEloChange(p1.elo_change)} ELO
-                        </span>
-                      )}
-                      {isSnooker && (
-                        <span style={styles.highestBreak}>
-                          ⚡ Break: {p1.highest_break ?? '—'}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Centre: score pill for Snooker, winner badge for Pool */}
-                  {isSnooker ? (
-                    <div style={styles.scorePill}>
-                      <span style={styles.scoreNum(p1?.is_winner)}>
-                        {p1?.score ?? '?'}
-                      </span>
-                      <span style={styles.scoreDivider}>–</span>
-                      <span style={styles.scoreNum(p2?.is_winner)}>
-                        {p2?.score ?? '?'}
-                      </span>
-                    </div>
-                  ) : (
-                    <div style={styles.poolWinnerBadge}>
-                      <span style={styles.poolWinnerName}>{winnerName}</span>
-                      <span style={styles.poolWBadge}>W</span>
-                    </div>
-                  )}
-
-                  {/* Player 2 — right aligned */}
-                  {p2 && (
-                    <div style={styles.playerBlock(false)}>
-                      <span style={styles.playerName(false)}>
-                        {p2.players?.name ?? `Player ${p2.player_id}`}
-                        {p2.is_winner && <span style={styles.winnerIcon}>🏆</span>}
-                      </span>
-                      {p2.elo_change != null && (
-                        <span style={styles.eloChange(Number(p2.elo_change))}>
-                          {formatEloChange(p2.elo_change)} ELO
-                        </span>
-                      )}
-                      {isSnooker && (
-                        <span style={styles.highestBreak}>
-                          ⚡ Break: {p2.highest_break ?? '—'}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-              </div>
-            </div>
-          );
-        })}
+        {!loading && !error && filtered.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtered.map((match, i) => (
+              <MatchCard key={match.id} match={match} index={i} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
