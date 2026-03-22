@@ -75,14 +75,10 @@ const GLOBAL_CSS = `
     from { opacity: 0; }
     to   { opacity: 1; }
   }
-  @keyframes shimmerPulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,160,0); }
-    50%       { box-shadow: 0 0 20px 4px rgba(0,229,160,0.15); }
-  }
 
-  .rm-win-btn:hover { transform: translateY(-1px); }
+  .rm-win-btn:hover  { transform: translateY(-1px); }
   .rm-win-btn:active { transform: translateY(0) scale(0.98); }
-  .rm-save-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+  .rm-save-btn:hover  { opacity: 0.88; transform: translateY(-1px); }
   .rm-save-btn:active { transform: translateY(0); }
 `;
 
@@ -190,9 +186,12 @@ function PlayerSearch({ label, value, onChange, excludeIds = [], groupId }) {
     const { data, error } = await supabase
       .from("players")
       .insert({
-        name, elo_rating: 1200, snooker_elo: 1200,
+        name,
+        elo_rating: 1200, snooker_elo: 1200,
         total_matches: 0, total_wins: 0, total_losses: 0,
         current_streak: 0, longest_win_streak: 0, longest_loss_streak: 0,
+        snooker_matches: 0, snooker_wins: 0, snooker_losses: 0,
+        snooker_streak: 0, snooker_longest_win_streak: 0, snooker_longest_loss_streak: 0,
         group_id: groupId,
       })
       .select()
@@ -330,7 +329,7 @@ function WinButtons({ player1, player2, winner, onSelect, gameType }) {
               style={{
                 padding: "18px 12px", borderRadius: T.radius,
                 border: `1.5px solid ${active ? color : T.border}`,
-                background: active ? `${glow}` : T.surface,
+                background: active ? glow : T.surface,
                 color: active ? color : T.textSec,
                 cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
                 fontWeight: 700, fontSize: 13, textAlign: "center",
@@ -394,11 +393,9 @@ function ResultCard2({ result, onReset }) {
 
   return (
     <div style={{ animation: "fadeUp 0.35s cubic-bezier(0.16,1,0.3,1)" }}>
-      {/* Winner headline */}
       <div style={{
         textAlign: "center", marginBottom: 24,
-        padding: "20px 0 22px",
-        borderBottom: `1px solid ${T.border}`,
+        padding: "20px 0 22px", borderBottom: `1px solid ${T.border}`,
       }}>
         <div style={{
           display: "inline-flex", alignItems: "center", gap: 6,
@@ -421,7 +418,6 @@ function ResultCard2({ result, onReset }) {
         <div style={{ marginTop: 5, color: T.textMuted, fontSize: 13 }}>{gameType}</div>
       </div>
 
-      {/* Player cards */}
       <div style={{
         display: "grid", gridTemplateColumns: "1fr auto 1fr",
         gap: 10, alignItems: "center", marginBottom: 20,
@@ -457,17 +453,13 @@ function ResultCard2({ result, onReset }) {
         </div>
       </div>
 
-      {/* ELO before/after table */}
       <div style={{
-        background: T.surface,
-        border: `1px solid ${T.border}`,
-        borderRadius: T.radiusSm,
-        overflow: "hidden", marginBottom: 22,
+        background: T.surface, border: `1px solid ${T.border}`,
+        borderRadius: T.radiusSm, overflow: "hidden", marginBottom: 22,
       }}>
         <div style={{
           display: "flex", justifyContent: "space-between",
-          padding: "9px 14px",
-          borderBottom: `1px solid ${T.border}`,
+          padding: "9px 14px", borderBottom: `1px solid ${T.border}`,
           background: "rgba(255,255,255,0.02)",
         }}>
           <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: T.textMuted, fontFamily: "'DM Mono', monospace" }}>Player</span>
@@ -479,9 +471,7 @@ function ResultCard2({ result, onReset }) {
             padding: "11px 14px",
             borderBottom: i === 0 ? `1px solid ${T.border}` : "none",
           }}>
-            <span style={{ color: T.textSec, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
-              {p.name}
-            </span>
+            <span style={{ color: T.textSec, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>{p.name}</span>
             <span style={{ fontFamily: "'DM Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 13 }}>
               <span style={{ color: T.textMuted }}>{i === 0 ? result.elo1Before : result.elo2Before}</span>
               <span style={{ color: T.textMuted, margin: "0 5px" }}>→</span>
@@ -491,17 +481,12 @@ function ResultCard2({ result, onReset }) {
         ))}
       </div>
 
-      <button
-        onClick={onReset}
-        className="rm-save-btn"
-        style={{
-          width: "100%", padding: "14px", borderRadius: T.radius,
-          background: T.green, border: "none", color: "#071a13",
-          fontWeight: 800, fontSize: 14, letterSpacing: "0.03em",
-          cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-          transition: "all 0.2s",
-        }}
-      >
+      <button onClick={onReset} className="rm-save-btn" style={{
+        width: "100%", padding: "14px", borderRadius: T.radius,
+        background: T.green, border: "none", color: "#071a13",
+        fontWeight: 800, fontSize: 14, letterSpacing: "0.03em",
+        cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s",
+      }}>
         Record Another Match
       </button>
     </div>
@@ -578,17 +563,12 @@ function ResultCard3({ result, onReset }) {
         })}
       </div>
 
-      <button
-        onClick={onReset}
-        className="rm-save-btn"
-        style={{
-          width: "100%", padding: "14px", borderRadius: T.radius,
-          background: T.green, border: "none", color: "#071a13",
-          fontWeight: 800, fontSize: 14, letterSpacing: "0.03em",
-          cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-          transition: "all 0.2s",
-        }}
-      >
+      <button onClick={onReset} className="rm-save-btn" style={{
+        width: "100%", padding: "14px", borderRadius: T.radius,
+        background: T.green, border: "none", color: "#071a13",
+        fontWeight: 800, fontSize: 14, letterSpacing: "0.03em",
+        cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s",
+      }}>
         Record Another Match
       </button>
     </div>
@@ -671,6 +651,7 @@ export default function RecordMatch() {
     return null;
   };
 
+  // ─── SAVE — 2 player ────────────────────────────────────────────────────────
   const saveTwo = async () => {
     const p1Won  = winner === "p1";
     const s1 = p1Won ? 1 : 0, s2 = p1Won ? 0 : 1;
@@ -696,10 +677,36 @@ export default function RecordMatch() {
       const newElo = won ? elo.newA : elo.newB;
       const { data: fresh } = await supabase.from("players").select("*").eq("id", player.id).single();
       const p = fresh || player;
-      const streak   = won ? (p.current_streak >= 0 ? p.current_streak + 1 : 1) : (p.current_streak <= 0 ? p.current_streak - 1 : -1);
-      const longestW = won  ? Math.max(p.longest_win_streak  || 0, streak)          : (p.longest_win_streak  || 0);
-      const longestL = !won ? Math.max(p.longest_loss_streak || 0, Math.abs(streak)) : (p.longest_loss_streak || 0);
-      await supabase.from("players").update({ [eloCol]: newElo, total_matches: (p.total_matches || 0) + 1, total_wins: (p.total_wins || 0) + (won ? 1 : 0), total_losses: (p.total_losses || 0) + (won ? 0 : 1), current_streak: streak, longest_win_streak: longestW, longest_loss_streak: longestL }).eq("id", player.id);
+
+      if (isSnooker) {
+        // ── Snooker: update snooker-specific columns only ──
+        const streak   = won ? (p.snooker_streak >= 0 ? p.snooker_streak + 1 : 1) : (p.snooker_streak <= 0 ? p.snooker_streak - 1 : -1);
+        const longestW = won  ? Math.max(p.snooker_longest_win_streak  || 0, streak)           : (p.snooker_longest_win_streak  || 0);
+        const longestL = !won ? Math.max(p.snooker_longest_loss_streak || 0, Math.abs(streak)) : (p.snooker_longest_loss_streak || 0);
+        await supabase.from("players").update({
+          snooker_elo:                 newElo,
+          snooker_matches:             (p.snooker_matches || 0) + 1,
+          snooker_wins:                (p.snooker_wins   || 0) + (won ? 1 : 0),
+          snooker_losses:              (p.snooker_losses || 0) + (won ? 0 : 1),
+          snooker_streak:              streak,
+          snooker_longest_win_streak:  longestW,
+          snooker_longest_loss_streak: longestL,
+        }).eq("id", player.id);
+      } else {
+        // ── Pool: update pool-specific columns only ──
+        const streak   = won ? (p.current_streak >= 0 ? p.current_streak + 1 : 1) : (p.current_streak <= 0 ? p.current_streak - 1 : -1);
+        const longestW = won  ? Math.max(p.longest_win_streak  || 0, streak)           : (p.longest_win_streak  || 0);
+        const longestL = !won ? Math.max(p.longest_loss_streak || 0, Math.abs(streak)) : (p.longest_loss_streak || 0);
+        await supabase.from("players").update({
+          elo_rating:          newElo,
+          total_matches:       (p.total_matches  || 0) + 1,
+          total_wins:          (p.total_wins     || 0) + (won ? 1 : 0),
+          total_losses:        (p.total_losses   || 0) + (won ? 0 : 1),
+          current_streak:      streak,
+          longest_win_streak:  longestW,
+          longest_loss_streak: longestL,
+        }).eq("id", player.id);
+      }
     };
 
     await updatePlayer(player1, p1Won);
@@ -708,6 +715,7 @@ export default function RecordMatch() {
     setResult({ kind: "two", p1: player1, p2: player2, winner: p1Won ? player1.name : player2.name, gameType, highBreak1: break1, highBreak2: break2, eloChange1: elo.changeA, eloChange2: elo.changeB, elo1Before: r1, elo1After: elo.newA, elo2Before: r2, elo2After: elo.newB });
   };
 
+  // ─── SAVE — 3 player snooker ─────────────────────────────────────────────────
   const saveThree = async () => {
     const players = [player1, player2, player3];
     const breaks  = [Number(break1), Number(break2), Number(break3)];
@@ -722,23 +730,38 @@ export default function RecordMatch() {
       .select().single();
     if (mErr) throw mErr;
 
-    const mpRows = ranked.map((row, pos) => ({ match_id: match.id, player_id: row.player.id, score: row.breakScore, is_winner: row.rank === 1, elo_before: r[pos], elo_after: finalElo[pos], elo_change: netChange[pos], group_id: groupId, ...(row.breakScore > 0 ? { highest_break: row.breakScore } : {}) }));
+    const mpRows = ranked.map((row, pos) => ({
+      match_id: match.id, player_id: row.player.id, score: row.breakScore,
+      is_winner: row.rank === 1, elo_before: r[pos], elo_after: finalElo[pos],
+      elo_change: netChange[pos], group_id: groupId,
+      ...(row.breakScore > 0 ? { highest_break: row.breakScore } : {}),
+    }));
     const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
     if (mpErr) throw mpErr;
 
+    // ── Snooker: update snooker-specific columns only ──
     await Promise.all(ranked.map(async (row, pos) => {
       const won = row.rank === 1;
       const { data: fresh } = await supabase.from("players").select("*").eq("id", row.player.id).single();
       const p = fresh || row.player;
-      const streak   = won ? (p.current_streak >= 0 ? p.current_streak + 1 : 1) : (p.current_streak <= 0 ? p.current_streak - 1 : -1);
-      const longestW = won  ? Math.max(p.longest_win_streak  || 0, streak)          : (p.longest_win_streak  || 0);
-      const longestL = !won ? Math.max(p.longest_loss_streak || 0, Math.abs(streak)) : (p.longest_loss_streak || 0);
-      await supabase.from("players").update({ snooker_elo: finalElo[pos], total_matches: (p.total_matches || 0) + 1, total_wins: (p.total_wins || 0) + (won ? 1 : 0), total_losses: (p.total_losses || 0) + (won ? 0 : 1), current_streak: streak, longest_win_streak: longestW, longest_loss_streak: longestL }).eq("id", row.player.id);
+      const streak   = won ? (p.snooker_streak >= 0 ? p.snooker_streak + 1 : 1) : (p.snooker_streak <= 0 ? p.snooker_streak - 1 : -1);
+      const longestW = won  ? Math.max(p.snooker_longest_win_streak  || 0, streak)           : (p.snooker_longest_win_streak  || 0);
+      const longestL = !won ? Math.max(p.snooker_longest_loss_streak || 0, Math.abs(streak)) : (p.snooker_longest_loss_streak || 0);
+      await supabase.from("players").update({
+        snooker_elo:                 finalElo[pos],
+        snooker_matches:             (p.snooker_matches || 0) + 1,
+        snooker_wins:                (p.snooker_wins   || 0) + (won ? 1 : 0),
+        snooker_losses:              (p.snooker_losses || 0) + (won ? 0 : 1),
+        snooker_streak:              streak,
+        snooker_longest_win_streak:  longestW,
+        snooker_longest_loss_streak: longestL,
+      }).eq("id", row.player.id);
     }));
 
     setResult({ kind: "three", ranked: ranked.map((row, pos) => ({ ...row, eloBefore: r[pos], eloAfter: finalElo[pos], eloChange: netChange[pos] })) });
   };
 
+  // ─── UNIFIED SAVE ────────────────────────────────────────────────────────────
   const saveMatch = async () => {
     const err = validate();
     if (err) { setError(err); return; }
@@ -755,6 +778,7 @@ export default function RecordMatch() {
 
   const excludeFor = (...others) => others.filter(Boolean).map(p => p.id);
 
+  // ─── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <div style={{
       minHeight: "100vh",
@@ -769,22 +793,18 @@ export default function RecordMatch() {
 
       <div style={{ width: "100%", maxWidth: 480 }}>
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div style={{ marginBottom: 26, textAlign: "center" }}>
-          {/* Logo badge */}
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 9,
-            background: T.card,
-            borderRadius: 999, padding: "7px 16px",
-            border: `1px solid ${T.border}`,
-            marginBottom: 18,
+            background: T.card, borderRadius: 999, padding: "7px 16px",
+            border: `1px solid ${T.border}`, marginBottom: 18,
             boxShadow: "0 0 0 1px rgba(0,229,160,0.08)",
           }}>
             <span style={{ fontSize: 17 }}>🎱</span>
             <span style={{
-              fontWeight: 800, letterSpacing: "0.14em",
-              fontSize: 11, color: T.green,
-              textTransform: "uppercase",
+              fontWeight: 800, letterSpacing: "0.14em", fontSize: 11,
+              color: T.green, textTransform: "uppercase",
               fontFamily: "'DM Mono', monospace",
             }}>
               Pool Buzz
@@ -799,10 +819,9 @@ export default function RecordMatch() {
           </h1>
         </div>
 
-        {/* ── Card ── */}
+        {/* Card */}
         <div style={{
-          background: T.card,
-          border: `1px solid ${T.border}`,
+          background: T.card, border: `1px solid ${T.border}`,
           borderRadius: 16, padding: "22px 22px",
           boxShadow: "0 8px 48px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.04) inset",
         }}>
@@ -830,14 +849,12 @@ export default function RecordMatch() {
                     onClick={toggle3rd}
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      width: "100%",
-                      background: "transparent",
+                      width: "100%", background: "transparent",
                       border: `1px dashed ${show3rd ? "rgba(255,77,109,0.3)" : "rgba(0,229,160,0.25)"}`,
                       borderRadius: T.radiusSm,
                       color: show3rd ? T.red : T.green,
-                      fontSize: 13, fontWeight: 600,
-                      padding: "10px 16px", cursor: "pointer",
-                      fontFamily: "'DM Sans', sans-serif",
+                      fontSize: 13, fontWeight: 600, padding: "10px 16px",
+                      cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
                       transition: "all 0.18s",
                     }}
                     onMouseEnter={e => (e.currentTarget.style.background = show3rd ? T.redGlow : T.greenGlow)}
@@ -918,7 +935,7 @@ export default function RecordMatch() {
                 </div>
               )}
 
-              {/* Save button */}
+              {/* Save */}
               <button
                 onClick={saveMatch}
                 disabled={saving}
@@ -930,8 +947,7 @@ export default function RecordMatch() {
                   color: saving ? T.textMuted : "#071a13",
                   fontWeight: 800, fontSize: 14, letterSpacing: "0.04em",
                   cursor: saving ? "not-allowed" : "pointer",
-                  fontFamily: "'DM Sans', sans-serif",
-                  transition: "all 0.2s",
+                  fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s",
                   boxShadow: saving ? "none" : `0 0 28px rgba(0,229,160,0.18)`,
                 }}
               >
