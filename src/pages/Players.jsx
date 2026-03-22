@@ -75,8 +75,6 @@ const GLOBAL_CSS = `
   .profile-panel {
     margin: 40px auto !important;
     border-radius: 18px !important;
-    max-height: calc(100vh - 80px);
-    overflow-y: auto;
   }
   .profile-panel::-webkit-scrollbar { width: 3px; }
   .profile-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius:3px; }
@@ -95,10 +93,9 @@ const GLOBAL_CSS = `
     .profile-panel {
       margin: 0 !important;
       min-height: 100dvh !important;
-      max-height: none !important;
+      max-height: 100dvh !important;
       border-radius: 0 !important;
       border: none !important;
-      overflow-y: auto !important;
     }
     .lb-page  { padding: 20px 14px 100px !important; }
     .lb-title { font-size: 26px !important; }
@@ -417,7 +414,7 @@ function PlayerProfile({ player, onClose }) {
         background: "rgba(0,0,0,0.82)",
         backdropFilter: "blur(8px)",
         display: "flex", alignItems: "flex-start", justifyContent: "center",
-        overflowY: "auto", WebkitOverflowScrolling: "touch",paddingBottom: 40,
+        overflowY: "auto", WebkitOverflowScrolling: "touch",
       }}
     >
       <div
@@ -429,17 +426,21 @@ function PlayerProfile({ player, onClose }) {
           margin: "40px auto",
           borderRadius: 18,
           border: `1px solid ${T.borderHi}`,
-          overflow: "visible",
+          overflow: "hidden",
           boxShadow: "0 32px 100px rgba(0,0,0,0.8)",
           animation: "profileIn 0.22s cubic-bezier(0.16,1,0.3,1)",
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: "calc(100vh - 80px)",
         }}
       >
-        {/* Header */}
+        {/* Header — fixed at top, never scrolls */}
         <div style={{
           background: `linear-gradient(160deg, rgba(0,229,160,0.04) 0%, transparent 60%)`,
           borderBottom: `1px solid ${T.border}`,
           padding: "22px 22px 20px",
           position: "relative",
+          flexShrink: 0,
         }}>
           {/* Close btn */}
           <button
@@ -517,8 +518,13 @@ function PlayerProfile({ player, onClose }) {
           </div>
         </div>
 
-        {/* Body */}
-        <div style={{ padding: "22px 22px 36px" }}>
+        {/* Body — scrollable */}
+        <div style={{
+          padding: "22px 22px 36px",
+          overflowY: "auto",
+          flex: 1,
+          WebkitOverflowScrolling: "touch",
+        }}>
           {loading ? <LoadingDots /> : (
             <>
               <SectionLabel>Overall Stats</SectionLabel>
