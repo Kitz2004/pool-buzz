@@ -647,7 +647,8 @@ export default function RecordMatch() {
     if (isThree) {
       const scores = [break1, break2, break3].map(Number);
       if (scores.some(isNaN) || scores.some(s => s < 0)) return "Enter valid break scores for all 3 players.";
-      if (hasMeaningfulTie() && tieWinner === null) return "Two players are tied — please select who ranks higher.";
+      const allTied = scores[0] === scores[1] && scores[1] === scores[2];
+      if (!allTied && hasMeaningfulTie() && tieWinner === null) return "Two players are tied — please select who ranks higher.";
     }
     return null;
   };
@@ -717,9 +718,12 @@ export default function RecordMatch() {
   };
 
   // ─── SAVE — 3 player snooker ─────────────────────────────────────────────────
-  // Wins awarded: 1st → 2 wins, 2nd → 1 win, 3rd → 0 wins
-  const RANK_WINS   = { 1: 2, 2: 1, 3: 0 };
-  const RANK_LOSSES = { 1: 0, 2: 1, 3: 2 };
+  //
+  // Win rules based on tie scenario:
+  //   No tie:         1st→2, 2nd→1, 3rd→0
+  //   Tie 1st & 2nd:  1st→1, 2nd→1, 3rd→0
+  //   Tie 2nd & 3rd:  1st→2, 2nd→0, 3rd→0
+  //   3-way tie:      all→1
 
   // Detect which pairs of players are tied on breaks
   const getTiedPairs = () => {
@@ -732,12 +736,24 @@ export default function RecordMatch() {
     return pairs;
   };
 
-  // Among tied pairs, which ones actually affect ranking (both near top)?
+  // A tie is meaningful if the top two scores are equal (requires tiebreaker UI)
   const hasMeaningfulTie = () => {
     const b = [Number(break1), Number(break2), Number(break3)];
     const sorted = [...b].sort((x, y) => y - x);
-    // A tie is meaningful if the top two scores are equal
     return sorted[0] === sorted[1];
+  };
+
+  // Given sorted ranked array, compute wins per position based on tie scenario
+  const calcWins = (ranked) => {
+    const s = ranked.map(r => r.breakScore);
+    const allTied   = s[0] === s[1] && s[1] === s[2]; // 3-way tie
+    const top2Tied  = !allTied && s[0] === s[1];       // tie between 1st & 2nd
+    const bot2Tied  = !allTied && s[1] === s[2];       // tie between 2nd & 3rd
+
+    if (allTied)  return [1, 1, 1];
+    if (top2Tied) return [1, 1, 0];
+    if (bot2Tied) return [2, 0, 0];
+    return [2, 1, 0]; // no tie
   };
 
   const saveThree = async () => {
@@ -747,12 +763,14 @@ export default function RecordMatch() {
     // Sort by break score descending; use tieWinner index to break top ties
     const order = [0, 1, 2].sort((a, b) => {
       if (breaks[b] !== breaks[a]) return breaks[b] - breaks[a];
-      // Among tied players, tieWinner gets priority
       if (tieWinner === a) return -1;
       if (tieWinner === b) return 1;
       return a - b;
     });
-    const ranked  = order.map((idx, pos) => ({ player: players[idx], breakScore: breaks[idx], rank: pos + 1 }));
+    const ranked = order.map((idx, pos) => ({ player: players[idx], breakScore: breaks[idx], rank: pos + 1 }));
+    const wins   = calcWins(ranked);   // [wins for pos0, pos1, pos2]
+    const losses = wins.map(w => (2 - w)); // max 2 possible wins per match
+
     const r = ranked.map(row => row.player.snooker_elo ?? 1200);
     const { netChange, finalElo } = calcThreePlayerElo(r[0], r[1], r[2]);
 
@@ -763,20 +781,19 @@ export default function RecordMatch() {
     if (mErr) throw mErr;
 
     const mpRows = ranked.map((row, pos) => ({
-      match_id: match.id, player_id: row.player.id, score: RANK_WINS[row.rank],
-      is_winner: row.rank === 1, elo_before: r[pos], elo_after: finalElo[pos],
+      match_id: match.id, player_id: row.player.id, score: wins[pos],
+      is_winner: wins[pos] === Math.max(...wins), // is_winner = whoever got most wins
+      elo_before: r[pos], elo_after: finalElo[pos],
       elo_change: netChange[pos], group_id: groupId,
       ...(row.breakScore > 0 ? { highest_break: row.breakScore } : {}),
     }));
     const { error: mpErr } = await supabase.from("match_players").insert(mpRows);
     if (mpErr) throw mpErr;
 
-    // ── Snooker: update snooker-specific columns only ──
-    // 1st place: +2 wins, +0 losses | 2nd place: +1 win, +1 loss | 3rd place: +0 wins, +2 losses
     await Promise.all(ranked.map(async (row, pos) => {
-      const winsEarned   = RANK_WINS[row.rank];
-      const lossesEarned = RANK_LOSSES[row.rank];
-      const won = row.rank === 1;
+      const winsEarned   = wins[pos];
+      const lossesEarned = losses[pos];
+      const won = winsEarned === Math.max(...wins); // streak: based on who got most wins
       const { data: fresh } = await supabase.from("players").select("*").eq("id", row.player.id).single();
       const p = fresh || row.player;
       const streak   = won ? (p.snooker_streak >= 0 ? p.snooker_streak + 1 : 1) : (p.snooker_streak <= 0 ? p.snooker_streak - 1 : -1);
@@ -784,7 +801,7 @@ export default function RecordMatch() {
       const longestL = !won ? Math.max(p.snooker_longest_loss_streak || 0, Math.abs(streak)) : (p.snooker_longest_loss_streak || 0);
       await supabase.from("players").update({
         snooker_elo:                 finalElo[pos],
-        snooker_matches:             (p.snooker_matches || 0) + 1,
+        snooker_matches:             (p.snooker_matches || 0) + 2,
         snooker_wins:                (p.snooker_wins   || 0) + winsEarned,
         snooker_losses:              (p.snooker_losses || 0) + lossesEarned,
         snooker_streak:              streak,
@@ -793,7 +810,7 @@ export default function RecordMatch() {
       }).eq("id", row.player.id);
     }));
 
-    setResult({ kind: "three", ranked: ranked.map((row, pos) => ({ ...row, eloBefore: r[pos], eloAfter: finalElo[pos], eloChange: netChange[pos] })) });
+    setResult({ kind: "three", ranked: ranked.map((row, pos) => ({ ...row, winsEarned: wins[pos], eloBefore: r[pos], eloAfter: finalElo[pos], eloChange: netChange[pos] })) });
   };
 
   // ─── UNIFIED SAVE ────────────────────────────────────────────────────────────
@@ -948,13 +965,25 @@ export default function RecordMatch() {
                         border: `1px solid ${T.border}`,
                         fontFamily: "'DM Mono', monospace",
                       }}>
-                        Highest break → 1st place. ELO via three 1v1 duels.
+                        Highest break → 1st (2pts). Tie 1&2 → 1pt each. Tie 2&3 → 1st gets 2pts, rest 0. All tied → 1pt each.
                       </div>
                     )}
 
-                    {/* Tiebreaker selector — shown only when top two breaks are equal */}
+                    {/* Tiebreaker selector — only shown when TOP two breaks are equal (needs manual pick) */}
                     {isThree && hasMeaningfulTie() && (() => {
                       const b = [Number(break1), Number(break2), Number(break3)];
+                      const allTied  = b[0] === b[1] && b[1] === b[2];
+                      if (allTied) return (
+                        <div style={{
+                          marginTop: 14, padding: "10px 14px", borderRadius: 10,
+                          background: "rgba(255,197,61,0.06)",
+                          border: "1px solid rgba(255,197,61,0.22)",
+                          fontSize: 12, color: T.gold, fontFamily: "'DM Mono', monospace",
+                          fontWeight: 600,
+                        }}>
+                          ⚡ 3-way tie — everyone gets 1 win
+                        </div>
+                      );
                       const maxBreak = Math.max(...b);
                       const tiedPlayers = [player1, player2, player3]
                         .map((p, i) => ({ p, i, score: b[i] }))
@@ -972,6 +1001,9 @@ export default function RecordMatch() {
                             marginBottom: 10, fontFamily: "'DM Mono', monospace",
                           }}>
                             ⚡ Tie on {maxBreak} — Who ranks higher?
+                          </div>
+                          <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 10, fontFamily: "'DM Mono', monospace" }}>
+                            Both get 1 win each, 3rd gets 0.
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             {tiedPlayers.map(({ p, i }) => (
