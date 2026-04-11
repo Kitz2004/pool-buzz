@@ -415,17 +415,44 @@ function MatchCard({ match, index, onDelete }) {
   const handleConfirmDelete = async () => {
     setDeleting(true);
     try {
-      // Delete match_players first (FK constraint), then the match
+      const isSnookerMatch = normalise(match.game_type) === 'snooker';
+      const matchPlayers   = match.match_players || [];
+      const isThreePlayer  = matchPlayers.length > 2;
+
+      // ── Revert each player's stats ────────────────────────────────────────
+      await Promise.all(matchPlayers.map(async (mp) => {
+        const { data: fresh } = await supabase
+          .from('players').select('*').eq('id', mp.player_id).single();
+        if (!fresh) return;
+
+        const winsToRemove   = mp.score ?? (mp.is_winner ? 1 : 0);
+        const matchesToRemove = isThreePlayer ? 2 : 1;
+        const lossesToRemove  = matchesToRemove - winsToRemove;
+
+        if (isSnookerMatch) {
+          await supabase.from('players').update({
+            snooker_elo:     mp.elo_before ?? fresh.snooker_elo,
+            snooker_matches: Math.max(0, (fresh.snooker_matches || 0) - matchesToRemove),
+            snooker_wins:    Math.max(0, (fresh.snooker_wins    || 0) - winsToRemove),
+            snooker_losses:  Math.max(0, (fresh.snooker_losses  || 0) - lossesToRemove),
+          }).eq('id', mp.player_id);
+        } else {
+          await supabase.from('players').update({
+            elo_rating:    mp.elo_before ?? fresh.elo_rating,
+            total_matches: Math.max(0, (fresh.total_matches || 0) - 1),
+            total_wins:    Math.max(0, (fresh.total_wins    || 0) - (mp.is_winner ? 1 : 0)),
+            total_losses:  Math.max(0, (fresh.total_losses  || 0) - (mp.is_winner ? 0 : 1)),
+          }).eq('id', mp.player_id);
+        }
+      }));
+
+      // ── Delete match_players then match ───────────────────────────────────
       const { error: mpErr } = await supabase
-        .from('match_players')
-        .delete()
-        .eq('match_id', match.id);
+        .from('match_players').delete().eq('match_id', match.id);
       if (mpErr) throw mpErr;
 
       const { error: mErr } = await supabase
-        .from('matches')
-        .delete()
-        .eq('id', match.id);
+        .from('matches').delete().eq('id', match.id);
       if (mErr) throw mErr;
 
       setConfirming(false);
@@ -458,7 +485,8 @@ function MatchCard({ match, index, onDelete }) {
         {/* Delete button */}
         <button
           className="del-btn"
-          onClick={() => { console.log('delete clicked', match.id); setConfirming(true); }}          title="Delete match"
+          onClick={() => setConfirming(true)}
+          title="Delete match"
           style={{
             position: 'absolute', top: 10, right: 10,
             width: 28, height: 28, borderRadius: 7,
