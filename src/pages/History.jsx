@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../supabase.js';
 import { useAuth } from '../context/AuthContext';
 
-// ─── THEME (matches Pool Buzz design system) ──────────────────────────────────
+// ─── THEME ────────────────────────────────────────────────────────────────────
 const T = {
   bg:        "#090b0f",
   surface:   "#0f1218",
@@ -59,6 +59,10 @@ const GLOBAL_CSS = `
     from { opacity: 0; transform: translateY(10px); }
     to   { opacity: 1; transform: none; }
   }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.93) translateY(8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
 
   .hist-card {
     transition: border-color 0.18s ease, box-shadow 0.18s ease;
@@ -67,6 +71,16 @@ const GLOBAL_CSS = `
     border-color: rgba(255,255,255,0.11) !important;
     box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
   }
+  .del-btn {
+    transition: background 0.15s ease, transform 0.12s ease;
+  }
+  .del-btn:hover {
+    background: rgba(255,77,109,0.18) !important;
+    transform: scale(1.08);
+  }
+  .del-btn:active {
+    transform: scale(0.94);
+  }
 
   @media (max-width: 520px) {
     .hist-header { padding: 22px 14px 0 !important; }
@@ -74,6 +88,104 @@ const GLOBAL_CSS = `
     .hist-title  { font-size: 22px !important; }
   }
 `;
+
+// ─── TRASH ICON SVG ───────────────────────────────────────────────────────────
+function TrashIcon() {
+  return (
+    <svg width="13" height="14" viewBox="0 0 13 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M1 3.5H12M4.5 3.5V2.5C4.5 2 4.9 1.5 5.5 1.5H7.5C8.1 1.5 8.5 2 8.5 2.5V3.5M5.5 6.5V10.5M7.5 6.5V10.5M2 3.5L2.5 11.5C2.5 12.1 3 12.5 3.5 12.5H9.5C10 12.5 10.5 12.1 10.5 11.5L11 3.5H2Z"
+        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// ─── CONFIRM DIALOG ───────────────────────────────────────────────────────────
+function ConfirmDialog({ onConfirm, onCancel, deleting }) {
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(0,0,0,0.72)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 20px',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#141820',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 16,
+          padding: '24px 24px 20px',
+          width: '100%', maxWidth: 320,
+          boxShadow: '0 24px 64px rgba(0,0,0,0.8)',
+          animation: 'popIn 0.18s cubic-bezier(0.16,1,0.3,1)',
+        }}
+      >
+        {/* Icon */}
+        <div style={{
+          width: 44, height: 44, borderRadius: 12,
+          background: 'rgba(255,77,109,0.1)',
+          border: '1px solid rgba(255,77,109,0.22)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: 16, color: T.red, fontSize: 18,
+        }}>
+          🗑️
+        </div>
+
+        <div style={{
+          fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 6,
+          fontFamily: "'DM Sans', sans-serif", letterSpacing: '-0.01em',
+        }}>
+          Delete this match?
+        </div>
+        <div style={{
+          fontSize: 13, color: T.textSec, lineHeight: 1.5, marginBottom: 22,
+          fontFamily: "'DM Sans', sans-serif",
+        }}>
+          This action cannot be undone. The match and all associated data will be permanently removed.
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            style={{
+              flex: 1, padding: '11px 0', borderRadius: 10,
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: T.textSec, fontSize: 13, fontWeight: 700,
+              cursor: deleting ? 'not-allowed' : 'pointer',
+              fontFamily: "'DM Sans', sans-serif",
+              transition: 'all 0.15s',
+              opacity: deleting ? 0.5 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            style={{
+              flex: 1, padding: '11px 0', borderRadius: 10,
+              background: deleting ? 'rgba(255,77,109,0.3)' : T.red,
+              border: 'none',
+              color: '#fff', fontSize: 13, fontWeight: 800,
+              cursor: deleting ? 'not-allowed' : 'pointer',
+              fontFamily: "'DM Sans', sans-serif",
+              transition: 'all 0.15s',
+              boxShadow: deleting ? 'none' : '0 0 20px rgba(255,77,109,0.25)',
+            }}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── SKELETON LOADING ─────────────────────────────────────────────────────────
 function SkeletonCards() {
@@ -289,7 +401,10 @@ function ThreePlayerMatch({ players }) {
 }
 
 // ─── MATCH CARD ───────────────────────────────────────────────────────────────
-function MatchCard({ match, index }) {
+function MatchCard({ match, index, onDelete }) {
+  const [confirming, setConfirming] = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
+
   const isSnooker = normalise(match.game_type) === 'snooker';
   const players   = match.match_players || [];
   const isThree   = players.length > 2;
@@ -297,59 +412,113 @@ function MatchCard({ match, index }) {
   const p1 = sorted[0];
   const p2 = sorted[1];
 
+  const handleConfirmDelete = async () => {
+    setDeleting(true);
+    try {
+      // Delete match_players first (FK constraint), then the match
+      const { error: mpErr } = await supabase
+        .from('match_players')
+        .delete()
+        .eq('match_id', match.id);
+      if (mpErr) throw mpErr;
+
+      const { error: mErr } = await supabase
+        .from('matches')
+        .delete()
+        .eq('id', match.id);
+      if (mErr) throw mErr;
+
+      setConfirming(false);
+      onDelete(match.id);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      setDeleting(false);
+    }
+  };
+
   return (
-    <div className="hist-card" style={{
-      background: T.card,
-      border: `1px solid ${T.border}`,
-      borderRadius: 14, overflow: 'hidden',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-      animation: 'fadeSlide 0.25s ease both',
-      animationDelay: `${Math.min(index * 30, 200)}ms`,
-    }}>
-      {/* Top accent bar */}
-      <div style={{
-        height: 2,
-        background: isSnooker
-          ? 'linear-gradient(90deg, #ff4d6d, #c2185b)'
-          : 'linear-gradient(90deg, #00e5a0, #00b87e)',
-      }} />
-
-      <div style={{ padding: '13px 15px 15px' }}>
-        {/* Meta row */}
+    <>
+      <div className="hist-card" style={{
+        background: T.card,
+        border: `1px solid ${T.border}`,
+        borderRadius: 14, overflow: 'hidden',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+        animation: 'fadeSlide 0.25s ease both',
+        animationDelay: `${Math.min(index * 30, 200)}ms`,
+        position: 'relative',
+      }}>
+        {/* Top accent bar */}
         <div style={{
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', marginBottom: 12,
-        }}>
-          <span style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
-            textTransform: 'uppercase', padding: '3px 9px', borderRadius: 20,
-            background: isSnooker ? T.redGlow : T.greenGlow,
-            color: isSnooker ? T.red : T.green,
-            border: `1px solid ${isSnooker ? 'rgba(255,77,109,0.22)' : 'rgba(0,229,160,0.2)'}`,
-            fontFamily: "'DM Mono', monospace",
-          }}>
-            {isSnooker ? '🔴 Snooker' : '🎱 Pool'}{isThree ? ' · 3P' : ''}
-          </span>
-          <span style={{
-            fontSize: 11, color: T.textMuted,
-            fontFamily: "'DM Mono', monospace",
-          }}>
-            {formatDateTime(match.played_at)}
-          </span>
-        </div>
+          height: 2,
+          background: isSnooker
+            ? 'linear-gradient(90deg, #ff4d6d, #c2185b)'
+            : 'linear-gradient(90deg, #00e5a0, #00b87e)',
+        }} />
 
-        {/* Players section */}
-        {isThree ? (
-          <ThreePlayerMatch players={players} />
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <PlayerSide mp={p1} isSnooker={isSnooker} align="left" />
-            <CentreWidget match={match} isSnooker={isSnooker} p1={p1} p2={p2} />
-            <PlayerSide mp={p2} isSnooker={isSnooker} align="right" />
+        {/* Delete button */}
+        <button
+          className="del-btn"
+          onClick={() => setConfirming(true)}
+          title="Delete match"
+          style={{
+            position: 'absolute', top: 10, right: 10,
+            width: 28, height: 28, borderRadius: 7,
+            background: 'rgba(255,77,109,0.08)',
+            border: '1px solid rgba(255,77,109,0.18)',
+            color: T.red, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 2, padding: 0,
+          }}
+        >
+          <TrashIcon />
+        </button>
+
+        <div style={{ padding: '13px 15px 15px' }}>
+          {/* Meta row — give right padding so trash btn doesn't overlap timestamp */}
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', marginBottom: 12,
+            paddingRight: 34,
+          }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
+              textTransform: 'uppercase', padding: '3px 9px', borderRadius: 20,
+              background: isSnooker ? T.redGlow : T.greenGlow,
+              color: isSnooker ? T.red : T.green,
+              border: `1px solid ${isSnooker ? 'rgba(255,77,109,0.22)' : 'rgba(0,229,160,0.2)'}`,
+              fontFamily: "'DM Mono', monospace",
+            }}>
+              {isSnooker ? '🔴 Snooker' : '🎱 Pool'}{isThree ? ' · 3P' : ''}
+            </span>
+            <span style={{
+              fontSize: 11, color: T.textMuted,
+              fontFamily: "'DM Mono', monospace",
+            }}>
+              {formatDateTime(match.played_at)}
+            </span>
           </div>
-        )}
+
+          {/* Players section */}
+          {isThree ? (
+            <ThreePlayerMatch players={players} />
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <PlayerSide mp={p1} isSnooker={isSnooker} align="left" />
+              <CentreWidget match={match} isSnooker={isSnooker} p1={p1} p2={p2} />
+              <PlayerSide mp={p2} isSnooker={isSnooker} align="right" />
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {confirming && (
+        <ConfirmDialog
+          onConfirm={handleConfirmDelete}
+          onCancel={() => { if (!deleting) setConfirming(false); }}
+          deleting={deleting}
+        />
+      )}
+    </>
   );
 }
 
@@ -363,34 +532,40 @@ export default function History() {
   const { group } = useAuth();
   const groupId   = group?.id;
 
-  useEffect(() => {
-    async function fetchMatches() {
-      setLoading(true); setError(null);
-      try {
-        const { data, error: sbError } = await supabase
-          .from('matches')
-          .select(`
-            id, game_type, played_at, is_deleted,
-            match_players (
-              id, player_id, score, is_winner,
-              elo_before, elo_after, elo_change, highest_break,
-              players ( id, name, elo_rating )
-            )
-          `)
-          .eq('group_id', groupId)
-          .eq('is_deleted', false)
-          .order('played_at', { ascending: false });
+  const fetchMatches = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const { data, error: sbError } = await supabase
+        .from('matches')
+        .select(`
+          id, game_type, played_at, is_deleted,
+          match_players (
+            id, player_id, score, is_winner,
+            elo_before, elo_after, elo_change, highest_break,
+            players ( id, name, elo_rating )
+          )
+        `)
+        .eq('group_id', groupId)
+        .eq('is_deleted', false)
+        .order('played_at', { ascending: false });
 
-        if (sbError) throw sbError;
-        setMatches(data || []);
-      } catch (err) {
-        setError(err.message || 'Failed to load matches.');
-      } finally {
-        setLoading(false);
-      }
+      if (sbError) throw sbError;
+      setMatches(data || []);
+    } catch (err) {
+      setError(err.message || 'Failed to load matches.');
+    } finally {
+      setLoading(false);
     }
-    if (groupId) fetchMatches();
   }, [groupId]);
+
+  useEffect(() => {
+    if (groupId) fetchMatches();
+  }, [groupId, fetchMatches]);
+
+  // Remove deleted match from local state instantly (no refetch needed)
+  const handleDelete = useCallback((matchId) => {
+    setMatches(prev => prev.filter(m => m.id !== matchId));
+  }, []);
 
   const filtered = matches.filter(m =>
     filter === 'All' || normalise(m.game_type) === filter.toLowerCase()
@@ -423,7 +598,6 @@ export default function History() {
         position: 'sticky', top: 0, zIndex: 10,
       }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
-          {/* Title + count */}
           <div style={{
             display: 'flex', alignItems: 'baseline',
             gap: 10, marginBottom: 14, flexWrap: 'wrap',
@@ -494,7 +668,12 @@ export default function History() {
         {!loading && !error && filtered.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {filtered.map((match, i) => (
-              <MatchCard key={match.id} match={match} index={i} />
+              <MatchCard
+                key={match.id}
+                match={match}
+                index={i}
+                onDelete={handleDelete}
+              />
             ))}
           </div>
         )}
