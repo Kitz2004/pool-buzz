@@ -715,6 +715,10 @@ export default function RecordMatch() {
   };
 
   // ─── SAVE — 3 player snooker ─────────────────────────────────────────────────
+  // Wins awarded: 1st → 2 wins, 2nd → 1 win, 3rd → 0 wins
+  const RANK_WINS   = { 1: 2, 2: 1, 3: 0 };
+  const RANK_LOSSES = { 1: 0, 2: 1, 3: 2 };
+
   const saveThree = async () => {
     const players = [player1, player2, player3];
     const breaks  = [Number(break1), Number(break2), Number(break3)];
@@ -737,7 +741,7 @@ export default function RecordMatch() {
     if (mErr) throw mErr;
 
     const mpRows = ranked.map((row, pos) => ({
-      match_id: match.id, player_id: row.player.id, score: row.breakScore,
+      match_id: match.id, player_id: row.player.id, score: RANK_WINS[row.rank],
       is_winner: row.rank === 1, elo_before: r[pos], elo_after: finalElo[pos],
       elo_change: netChange[pos], group_id: groupId,
       ...(row.breakScore > 0 ? { highest_break: row.breakScore } : {}),
@@ -746,8 +750,11 @@ export default function RecordMatch() {
     if (mpErr) throw mpErr;
 
     // ── Snooker: update snooker-specific columns only ──
+    // 1st place: +2 wins, +0 losses | 2nd place: +1 win, +1 loss | 3rd place: +0 wins, +2 losses
     await Promise.all(ranked.map(async (row, pos) => {
-      const won = row.rank === 1;
+      const winsEarned   = RANK_WINS[row.rank];
+      const lossesEarned = RANK_LOSSES[row.rank];
+      const won = row.rank === 1; // streak still based on finishing 1st
       const { data: fresh } = await supabase.from("players").select("*").eq("id", row.player.id).single();
       const p = fresh || row.player;
       const streak   = won ? (p.snooker_streak >= 0 ? p.snooker_streak + 1 : 1) : (p.snooker_streak <= 0 ? p.snooker_streak - 1 : -1);
@@ -756,8 +763,8 @@ export default function RecordMatch() {
       await supabase.from("players").update({
         snooker_elo:                 finalElo[pos],
         snooker_matches:             (p.snooker_matches || 0) + 1,
-        snooker_wins:                (p.snooker_wins   || 0) + (won ? 1 : 0),
-        snooker_losses:              (p.snooker_losses || 0) + (won ? 0 : 1),
+        snooker_wins:                (p.snooker_wins   || 0) + winsEarned,
+        snooker_losses:              (p.snooker_losses || 0) + lossesEarned,
         snooker_streak:              streak,
         snooker_longest_win_streak:  longestW,
         snooker_longest_loss_streak: longestL,
