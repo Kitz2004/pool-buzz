@@ -646,7 +646,6 @@ export default function RecordMatch() {
     if (isThree) {
       const scores = [break1, break2, break3].map(Number);
       if (scores.some(isNaN) || scores.some(s => s < 0)) return "Enter valid break scores for all 3 players.";
-      if (new Set(scores).size !== 3) return "Break scores must all be different (used to rank players).";
     }
     return null;
   };
@@ -719,7 +718,14 @@ export default function RecordMatch() {
   const saveThree = async () => {
     const players = [player1, player2, player3];
     const breaks  = [Number(break1), Number(break2), Number(break3)];
-    const order   = [0, 1, 2].sort((a, b) => breaks[b] - breaks[a]);
+    // If breaks are tied, the declared winner (p1 or p2) gets priority.
+    const winnerIdx = winner === "p1" ? 0 : winner === "p2" ? 1 : -1;
+    const order = [0, 1, 2].sort((a, b) => {
+      if (breaks[b] !== breaks[a]) return breaks[b] - breaks[a];
+      if (a === winnerIdx) return -1;
+      if (b === winnerIdx) return 1;
+      return a - b;
+    });
     const ranked  = order.map((idx, pos) => ({ player: players[idx], breakScore: breaks[idx], rank: pos + 1 }));
     const r = ranked.map(row => row.player.snooker_elo ?? 1200);
     const { netChange, finalElo } = calcThreePlayerElo(r[0], r[1], r[2]);
