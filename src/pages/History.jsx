@@ -458,8 +458,7 @@ function MatchCard({ match, index, onDelete }) {
         {/* Delete button */}
         <button
           className="del-btn"
-          onClick={() => setConfirming(true)}
-          title="Delete match"
+          onClick={() => { console.log('delete clicked', match.id); setConfirming(true); }}          title="Delete match"
           style={{
             position: 'absolute', top: 10, right: 10,
             width: 28, height: 28, borderRadius: 7,
