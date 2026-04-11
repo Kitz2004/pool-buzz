@@ -607,6 +607,7 @@ export default function RecordMatch() {
   const [break1,   setBreak1]   = useState("");
   const [break2,   setBreak2]   = useState("");
   const [break3,   setBreak3]   = useState("");
+  const [tieWinner, setTieWinner] = useState(null); // index (0/1/2) of tied winner
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState("");
   const [result,   setResult]   = useState(null);
@@ -617,19 +618,19 @@ export default function RecordMatch() {
   const groupId   = group?.id;
 
   const handleGameType = type => {
-    setGameType(type); setWinner(null);
+    setGameType(type); setWinner(null); setTieWinner(null);
     setBreak1(""); setBreak2(""); setBreak3(""); setError("");
     if (type !== "Snooker") { setShow3rd(false); setPlayer3(null); }
   };
 
   const toggle3rd = () => {
-    if (show3rd) { setPlayer3(null); setBreak3(""); }
+    if (show3rd) { setPlayer3(null); setBreak3(""); setTieWinner(null); }
     setShow3rd(v => !v); setError("");
   };
 
   const reset = () => {
     setPlayer1(null); setPlayer2(null); setPlayer3(null);
-    setShow3rd(false); setWinner(null);
+    setShow3rd(false); setWinner(null); setTieWinner(null);
     setBreak1(""); setBreak2(""); setBreak3("");
     setGameType("Pool"); setError(""); setResult(null);
   };
@@ -646,6 +647,7 @@ export default function RecordMatch() {
     if (isThree) {
       const scores = [break1, break2, break3].map(Number);
       if (scores.some(isNaN) || scores.some(s => s < 0)) return "Enter valid break scores for all 3 players.";
+      if (hasMeaningfulTie() && tieWinner === null) return "Two players are tied — please select who ranks higher.";
     }
     return null;
   };
@@ -719,15 +721,35 @@ export default function RecordMatch() {
   const RANK_WINS   = { 1: 2, 2: 1, 3: 0 };
   const RANK_LOSSES = { 1: 0, 2: 1, 3: 2 };
 
+  // Detect which pairs of players are tied on breaks
+  const getTiedPairs = () => {
+    if (!isThree) return [];
+    const b = [Number(break1), Number(break2), Number(break3)];
+    const pairs = [];
+    if (b[0] === b[1]) pairs.push([0, 1]);
+    if (b[0] === b[2]) pairs.push([0, 2]);
+    if (b[1] === b[2]) pairs.push([1, 2]);
+    return pairs;
+  };
+
+  // Among tied pairs, which ones actually affect ranking (both near top)?
+  const hasMeaningfulTie = () => {
+    const b = [Number(break1), Number(break2), Number(break3)];
+    const sorted = [...b].sort((x, y) => y - x);
+    // A tie is meaningful if the top two scores are equal
+    return sorted[0] === sorted[1];
+  };
+
   const saveThree = async () => {
     const players = [player1, player2, player3];
     const breaks  = [Number(break1), Number(break2), Number(break3)];
-    // If breaks are tied, the declared winner (p1 or p2) gets priority.
-    const winnerIdx = winner === "p1" ? 0 : winner === "p2" ? 1 : -1;
+
+    // Sort by break score descending; use tieWinner index to break top ties
     const order = [0, 1, 2].sort((a, b) => {
       if (breaks[b] !== breaks[a]) return breaks[b] - breaks[a];
-      if (a === winnerIdx) return -1;
-      if (b === winnerIdx) return 1;
+      // Among tied players, tieWinner gets priority
+      if (tieWinner === a) return -1;
+      if (tieWinner === b) return 1;
       return a - b;
     });
     const ranked  = order.map((idx, pos) => ({ player: players[idx], breakScore: breaks[idx], rank: pos + 1 }));
@@ -754,7 +776,7 @@ export default function RecordMatch() {
     await Promise.all(ranked.map(async (row, pos) => {
       const winsEarned   = RANK_WINS[row.rank];
       const lossesEarned = RANK_LOSSES[row.rank];
-      const won = row.rank === 1; // streak still based on finishing 1st
+      const won = row.rank === 1;
       const { data: fresh } = await supabase.from("players").select("*").eq("id", row.player.id).single();
       const p = fresh || row.player;
       const streak   = won ? (p.snooker_streak >= 0 ? p.snooker_streak + 1 : 1) : (p.snooker_streak <= 0 ? p.snooker_streak - 1 : -1);
@@ -907,9 +929,9 @@ export default function RecordMatch() {
                     <Label>{isThree ? "Break Scores (determines ranking)" : "Highest Break"}</Label>
                     {isThree ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <BreakInput playerName={player1?.name ?? "Player 1"} value={break1} onChange={setBreak1} />
-                        <BreakInput playerName={player2?.name ?? "Player 2"} value={break2} onChange={setBreak2} />
-                        <BreakInput playerName={player3?.name ?? "Player 3"} value={break3} onChange={setBreak3} />
+                        <BreakInput playerName={player1?.name ?? "Player 1"} value={break1} onChange={v => { setBreak1(v); setTieWinner(null); }} />
+                        <BreakInput playerName={player2?.name ?? "Player 2"} value={break2} onChange={v => { setBreak2(v); setTieWinner(null); }} />
+                        <BreakInput playerName={player3?.name ?? "Player 3"} value={break3} onChange={v => { setBreak3(v); setTieWinner(null); }} />
                       </div>
                     ) : (
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
@@ -929,6 +951,49 @@ export default function RecordMatch() {
                         Highest break → 1st place. ELO via three 1v1 duels.
                       </div>
                     )}
+
+                    {/* Tiebreaker selector — shown only when top two breaks are equal */}
+                    {isThree && hasMeaningfulTie() && (() => {
+                      const b = [Number(break1), Number(break2), Number(break3)];
+                      const maxBreak = Math.max(...b);
+                      const tiedPlayers = [player1, player2, player3]
+                        .map((p, i) => ({ p, i, score: b[i] }))
+                        .filter(x => x.score === maxBreak);
+                      return (
+                        <div style={{
+                          marginTop: 14,
+                          background: "rgba(255,197,61,0.06)",
+                          border: "1px solid rgba(255,197,61,0.22)",
+                          borderRadius: 10, padding: "12px 14px",
+                        }}>
+                          <div style={{
+                            fontSize: 11, fontWeight: 700, letterSpacing: "0.1em",
+                            textTransform: "uppercase", color: T.gold,
+                            marginBottom: 10, fontFamily: "'DM Mono', monospace",
+                          }}>
+                            ⚡ Tie on {maxBreak} — Who ranks higher?
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            {tiedPlayers.map(({ p, i }) => (
+                              <button
+                                key={i}
+                                onClick={() => setTieWinner(tieWinner === i ? null : i)}
+                                style={{
+                                  flex: 1, padding: "10px 8px", borderRadius: 8,
+                                  border: `1.5px solid ${tieWinner === i ? T.gold : "rgba(255,197,61,0.2)"}`,
+                                  background: tieWinner === i ? "rgba(255,197,61,0.12)" : "rgba(255,255,255,0.03)",
+                                  color: tieWinner === i ? T.gold : T.textSec,
+                                  fontWeight: 700, fontSize: 13, cursor: "pointer",
+                                  fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s",
+                                }}
+                              >
+                                {tieWinner === i ? "🥇 " : ""}{p?.name ?? `Player ${i + 1}`}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </>
               )}
