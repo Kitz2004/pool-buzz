@@ -864,7 +864,7 @@ function SnookerTable({ rows, period, onRowClick }) {
           {rows.map((row, idx) => {
             const wins   = period === "month" ? (row.month_wins   ?? 0)  : row.wins;
             const losses = period === "month" ? (row.month_losses ?? 0)  : (row.losses ?? (row.played - row.wins));
-            const played = period === "month" ? (row.month_wins ?? 0) + (row.month_losses ?? 0) : row.played;
+            const played = period === "month" ? (row.month_played ?? 0)  : row.played;
             const pct    = winPct(wins, played);
             const isMedal = idx < 3;
             return (
@@ -945,7 +945,7 @@ function SnookerTable({ rows, period, onRowClick }) {
 function SnookerCard({ row, idx, period, onClick }) {
   const isMedal = idx < 3;
   const wins    = period === "month" ? (row.month_wins   ?? 0) : row.wins;
-  const played  = period === "month" ? (row.month_wins   ?? 0) + (row.month_losses ?? 0) : row.played;
+  const played  = period === "month" ? (row.month_played ?? 0) : row.played;
   const pct     = winPct(wins, played);
   return (
     <div
@@ -1138,29 +1138,31 @@ export default function Players() {
           breakMap[pid] = row.highest_break;
       }
 
-      // Month wins/losses from match_players (is_winner flag)
-      const { data: monthData } = await supabase
+      // For month: use score column + player count per match to derive wins/losses/played correctly
+      const { data: monthScoreData } = await supabase
         .from("match_players")
-        .select(`player_id, is_winner, matches!inner(game_type, played_at)`)
+        .select(`player_id, score, match_id, matches!inner(game_type, played_at)`)
         .eq("group_id", groupId)
         .eq("matches.game_type", "Snooker")
         .gte("matches.played_at", monthStart());
 
-      // For month: count score (wins earned) per player per match row
-      // score column holds wins earned (2/1/0), is_winner = got most wins
-      const { data: monthScoreData } = await supabase
-        .from("match_players")
-        .select(`player_id, score, matches!inner(game_type, played_at)`)
-        .eq("group_id", groupId)
-        .eq("matches.game_type", "Snooker")
-        .gte("matches.played_at", monthStart());
+      // Count players per match to distinguish 2-player vs 3-player
+      const matchPlayerCounts = {};
+      for (const row of monthScoreData || []) {
+        matchPlayerCounts[row.match_id] = (matchPlayerCounts[row.match_id] || 0) + 1;
+      }
 
       const monthMap = {};
       for (const row of monthScoreData || []) {
-        const pid = row.player_id;
-        if (!monthMap[pid]) monthMap[pid] = { wins: 0, losses: 0 };
-        monthMap[pid].wins   += (row.score ?? 0);
-        monthMap[pid].losses += (2 - (row.score ?? 0));
+        const pid        = row.player_id;
+        const isThree    = (matchPlayerCounts[row.match_id] || 2) > 2;
+        const maxWins    = isThree ? 2 : 1;   // max wins possible in this match
+        const winsEarned = row.score ?? 0;
+        const lossesEarned = maxWins - winsEarned;
+        if (!monthMap[pid]) monthMap[pid] = { wins: 0, losses: 0, played: 0 };
+        monthMap[pid].wins   += winsEarned;
+        monthMap[pid].losses += lossesEarned;
+        monthMap[pid].played += maxWins;       // +2 for 3-player, +1 for 2-player
       }
 
       const rows = (playerData || []).map(p => ({
@@ -1173,6 +1175,7 @@ export default function Players() {
         highest_break: breakMap[p.id]   ?? null,
         month_wins:    monthMap[p.id]?.wins   ?? 0,
         month_losses:  monthMap[p.id]?.losses ?? 0,
+        month_played:  monthMap[p.id]?.played ?? 0,
       }));
 
       const sorted = rows.sort((a, b) => (b.snooker_elo ?? 1200) - (a.snooker_elo ?? 1200));
