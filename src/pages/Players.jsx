@@ -47,7 +47,6 @@ const streakFmt = s => {
     ? { label: `W${s}`,        color: T.winText  }
     : { label: `L${Math.abs(s)}`, color: T.lossText };
 };
-const eloColor = v => v > 0 ? T.winText : v < 0 ? T.lossText : T.textMuted;
 const pad2     = n => String(n).padStart(2, "0");
 const fmtDate  = iso => {
   const d = new Date(iso);
@@ -58,6 +57,9 @@ const monthStart = () => {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
 };
 const monthLabel = () => new Date().toLocaleString("default", { month: "long", year: "numeric" });
+
+// Win ratio for sorting: wins / total, 0 if no matches
+const winRatio = (w, t) => (!t ? 0 : w / t);
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
@@ -237,14 +239,6 @@ function MatchRow({ match, index }) {
           {match.game_type?.toUpperCase()} · {fmtDate(match.played_at)}
         </div>
       </div>
-      <span style={{
-        fontSize: 12, fontWeight: 700,
-        color: eloColor(match.elo_change),
-        fontFamily: "'DM Mono', monospace",
-        whiteSpace: "nowrap", flexShrink: 0,
-      }}>
-        {match.elo_change > 0 ? "+" : ""}{match.elo_change ?? "—"}
-      </span>
     </div>
   );
 }
@@ -344,7 +338,7 @@ function PlayerProfile({ player, onClose }) {
 
       const { data: mpData } = await supabase
         .from("match_players")
-        .select(`id, match_id, is_winner, elo_change, matches!inner(id, game_type, played_at)`)
+        .select(`id, match_id, is_winner, matches!inner(id, game_type, played_at)`)
         .eq("player_id", player.id)
         .order("matches(played_at)", { ascending: false })
         .limit(10);
@@ -434,7 +428,7 @@ function PlayerProfile({ player, onClose }) {
           maxHeight: "calc(100vh - 80px)",
         }}
       >
-        {/* Header — fixed at top, never scrolls */}
+        {/* Header */}
         <div style={{
           background: `linear-gradient(160deg, rgba(0,229,160,0.04) 0%, transparent 60%)`,
           borderBottom: `1px solid ${T.border}`,
@@ -442,7 +436,6 @@ function PlayerProfile({ player, onClose }) {
           position: "relative",
           flexShrink: 0,
         }}>
-          {/* Close btn */}
           <button
             onClick={onClose}
             style={{
@@ -476,35 +469,6 @@ function PlayerProfile({ player, onClose }) {
                 display: "flex", alignItems: "center", gap: 8, marginTop: 5, flexWrap: "wrap",
               }}>
                 <span style={{
-                  fontSize: 14, fontWeight: 700, color: T.green,
-                  fontFamily: "'DM Mono', monospace",
-                }}>
-                  {player.elo_rating}
-                </span>
-                <span style={{
-                  fontSize: 10, color: T.textMuted, textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                }}>
-                  Pool
-                </span>
-                {player.snooker_elo && (
-                  <>
-                    <span style={{ color: T.border, fontSize: 12 }}>·</span>
-                    <span style={{
-                      fontSize: 14, fontWeight: 700, color: T.gold,
-                      fontFamily: "'DM Mono', monospace",
-                    }}>
-                      {player.snooker_elo}
-                    </span>
-                    <span style={{
-                      fontSize: 10, color: T.textMuted, textTransform: "uppercase",
-                      letterSpacing: "0.1em",
-                    }}>
-                      Snooker
-                    </span>
-                  </>
-                )}
-                <span style={{
                   background: T.winBg, color: T.winText,
                   border: `1px solid rgba(0,229,160,0.25)`,
                   borderRadius: 6, padding: "2px 8px",
@@ -518,7 +482,7 @@ function PlayerProfile({ player, onClose }) {
           </div>
         </div>
 
-        {/* Body — scrollable */}
+        {/* Body */}
         <div style={{
           padding: "22px 22px 36px",
           overflowY: "auto",
@@ -667,9 +631,7 @@ function PeriodToggle({ value, onChange }) {
 
 // ─── POOL TABLE (desktop) ─────────────────────────────────────────────────────
 function PoolTable({ players, period, onRowClick }) {
-  const cols = period === "all"
-    ? ["#", "Player", "ELO", "W", "L", "Win %", "Streak"]
-    : ["#", "Player", "W", "L", "Win %"];
+  const cols = ["#", "Player", "W", "L", "Win %", "Streak"];
   return (
     <div style={{ borderRadius: 12, border: `1px solid ${T.border}`, overflow: "hidden" }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -732,18 +694,6 @@ function PoolTable({ players, period, onRowClick }) {
                     </span>
                   </div>
                 </td>
-                {period === "all" && (
-                  <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle" }}>
-                    <span style={{
-                      fontWeight: 700, fontSize: 13,
-                      color: isMedal ? MEDAL[idx].text : T.green,
-                      fontFamily: "'DM Mono', monospace",
-                      fontVariantNumeric: "tabular-nums",
-                    }}>
-                      {p.elo_rating ?? "—"}
-                    </span>
-                  </td>
-                )}
                 <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle", fontSize: 13, color: T.textSec, fontFamily: "'DM Mono', monospace", fontVariantNumeric: "tabular-nums" }}>{wins}</td>
                 <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle", fontSize: 13, color: T.textSec, fontFamily: "'DM Mono', monospace", fontVariantNumeric: "tabular-nums" }}>{losses}</td>
                 <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle" }}>
@@ -751,11 +701,9 @@ function PoolTable({ players, period, onRowClick }) {
                     {pct}
                   </span>
                 </td>
-                {period === "all" && (
-                  <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle" }}>
-                    <StreakChip streak={p.current_streak} />
-                  </td>
-                )}
+                <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle" }}>
+                  <StreakChip streak={p.current_streak} />
+                </td>
               </tr>
             );
           })}
@@ -812,7 +760,7 @@ function PoolCard({ player, idx, period, onClick }) {
           <span style={{ fontSize: 11, color: winPctColor(pct), fontWeight: 600, fontFamily: "'DM Mono', monospace" }}>
             {pct}
           </span>
-          {period === "all" && <StreakChip streak={player.current_streak} />}
+          <StreakChip streak={player.current_streak} />
         </div>
       </div>
       <div style={{ flexShrink: 0, textAlign: "right" }}>
@@ -822,14 +770,14 @@ function PoolCard({ player, idx, period, onClick }) {
           fontFamily: "'DM Mono', monospace",
           fontVariantNumeric: "tabular-nums",
         }}>
-          {period === "all" ? (player.elo_rating ?? "—") : wins}
+          {pct}
         </div>
         <div style={{
           fontSize: 9, color: T.textMuted,
           letterSpacing: "0.12em", textTransform: "uppercase",
           marginTop: 1, fontFamily: "'DM Mono', monospace",
         }}>
-          {period === "all" ? "ELO" : "WINS"}
+          WIN %
         </div>
       </div>
       <span style={{ color: T.textFaint, fontSize: 14, flexShrink: 0 }}>›</span>
@@ -839,9 +787,7 @@ function PoolCard({ player, idx, period, onClick }) {
 
 // ─── SNOOKER TABLE (desktop) ──────────────────────────────────────────────────
 function SnookerTable({ rows, period, onRowClick }) {
-  const cols = period === "all"
-    ? ["#", "Player", "ELO", "Played", "Wins", "Win %", "Hi Break"]
-    : ["#", "Player", "Played", "Wins", "Win %"];
+  const cols = ["#", "Player", "Played", "Wins", "Win %", "Hi Break"];
   return (
     <div style={{ borderRadius: 12, border: `1px solid ${T.border}`, overflow: "hidden" }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -863,7 +809,6 @@ function SnookerTable({ rows, period, onRowClick }) {
         <tbody>
           {rows.map((row, idx) => {
             const wins   = period === "month" ? (row.month_wins   ?? 0)  : row.wins;
-            const losses = period === "month" ? (row.month_losses ?? 0)  : (row.losses ?? (row.played - row.wins));
             const played = period === "month" ? (row.month_played ?? 0)  : row.played;
             const pct    = winPct(wins, played);
             const isMedal = idx < 3;
@@ -903,17 +848,6 @@ function SnookerTable({ rows, period, onRowClick }) {
                     </span>
                   </div>
                 </td>
-                {period === "all" && (
-                  <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle" }}>
-                    <span style={{
-                      fontWeight: 700, fontSize: 13,
-                      color: isMedal ? MEDAL[idx].text : T.green,
-                      fontFamily: "'DM Mono', monospace", fontVariantNumeric: "tabular-nums",
-                    }}>
-                      {row.snooker_elo ?? 1200}
-                    </span>
-                  </td>
-                )}
                 <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle", fontSize: 13, color: T.textSec, fontFamily: "'DM Mono', monospace", fontVariantNumeric: "tabular-nums" }}>{played}</td>
                 <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle", fontSize: 13, color: T.textSec, fontFamily: "'DM Mono', monospace", fontVariantNumeric: "tabular-nums" }}>{wins}</td>
                 <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle" }}>
@@ -921,17 +855,15 @@ function SnookerTable({ rows, period, onRowClick }) {
                     {pct}
                   </span>
                 </td>
-                {period === "all" && (
-                  <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle" }}>
-                    {row.highest_break != null ? (
-                      <span style={{ fontWeight: 700, color: T.gold, fontSize: 13, fontFamily: "'DM Mono', monospace", fontVariantNumeric: "tabular-nums" }}>
-                        {row.highest_break}
-                      </span>
-                    ) : (
-                      <span style={{ color: T.textFaint }}>—</span>
-                    )}
-                  </td>
-                )}
+                <td style={{ padding: "13px 16px", textAlign: "right", verticalAlign: "middle" }}>
+                  {row.highest_break != null ? (
+                    <span style={{ fontWeight: 700, color: T.gold, fontSize: 13, fontFamily: "'DM Mono', monospace", fontVariantNumeric: "tabular-nums" }}>
+                      {row.highest_break}
+                    </span>
+                  ) : (
+                    <span style={{ color: T.textFaint }}>—</span>
+                  )}
+                </td>
               </tr>
             );
           })}
@@ -988,7 +920,7 @@ function SnookerCard({ row, idx, period, onClick }) {
           <span style={{ fontSize: 11, color: winPctColor(pct), fontWeight: 600, fontFamily: "'DM Mono', monospace" }}>
             {pct}
           </span>
-          {period === "all" && row.highest_break != null && (
+          {row.highest_break != null && (
             <span style={{ fontSize: 11, color: T.gold, fontWeight: 700 }}>
               🎱 {row.highest_break}
             </span>
@@ -1001,14 +933,14 @@ function SnookerCard({ row, idx, period, onClick }) {
           color: isMedal ? MEDAL[idx].text : T.green,
           fontFamily: "'DM Mono', monospace", fontVariantNumeric: "tabular-nums",
         }}>
-          {period === "all" ? (row.snooker_elo ?? 1200) : wins}
+          {pct}
         </div>
         <div style={{
           fontSize: 9, color: T.textMuted,
           letterSpacing: "0.12em", textTransform: "uppercase",
           marginTop: 1, fontFamily: "'DM Mono', monospace",
         }}>
-          {period === "all" ? "ELO" : "WINS"}
+          WIN %
         </div>
       </div>
       {row.playerObj && <span style={{ color: T.textFaint, fontSize: 14, flexShrink: 0 }}>›</span>}
@@ -1049,6 +981,17 @@ function EmptyState({ emoji, title, subtitle }) {
   );
 }
 
+// ─── SORT BY WIN RATIO ────────────────────────────────────────────────────────
+const sortByWinRatio = (players, winsKey, lossesKey) =>
+  [...players].sort((a, b) => {
+    const aw = a[winsKey] ?? 0, bw = b[winsKey] ?? 0;
+    const at = aw + (a[lossesKey] ?? 0), bt = bw + (b[lossesKey] ?? 0);
+    const ar = winRatio(aw, at), br = winRatio(bw, bt);
+    if (br !== ar) return br - ar;
+    // tiebreak: more wins played
+    return bw - aw;
+  });
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function Players() {
   const [tab,           setTab]           = useState("pool");
@@ -1075,9 +1018,8 @@ export default function Players() {
     try {
       const { data: playerData, error: pErr } = await supabase
         .from("players")
-        .select("id, name, elo_rating, snooker_elo, total_wins, total_losses, total_matches, current_streak, longest_win_streak, longest_loss_streak")
-        .eq("group_id", groupId)
-        .order("elo_rating", { ascending: false });
+        .select("id, name, snooker_elo, total_wins, total_losses, total_matches, current_streak, longest_win_streak, longest_loss_streak")
+        .eq("group_id", groupId);
       if (pErr) throw pErr;
 
       const { data: monthData } = await supabase
@@ -1099,7 +1041,10 @@ export default function Players() {
         month_wins:   monthMap[p.id]?.wins   ?? 0,
         month_losses: monthMap[p.id]?.losses ?? 0,
       }));
-      setPoolPlayers(merged);
+
+      // Sort by win ratio (all time) initially
+      const sorted = sortByWinRatio(merged, "total_wins", "total_losses");
+      setPoolPlayers(sorted);
 
       const map = {};
       for (const p of playerData || []) map[p.id] = p;
@@ -1114,8 +1059,6 @@ export default function Players() {
 
   const fetchSnooker = useCallback(async () => {
     try {
-      // Use snooker_matches/snooker_wins from players table — already correctly
-      // incremented by +2 per 3-player match in RecordMatch
       const { data: playerData, error: pErr } = await supabase
         .from("players")
         .select("id, name, snooker_elo, snooker_matches, snooker_wins, snooker_losses")
@@ -1123,7 +1066,6 @@ export default function Players() {
         .gt("snooker_matches", 0);
       if (pErr) throw pErr;
 
-      // Highest break still comes from match_players
       const { data: breakData } = await supabase
         .from("match_players")
         .select(`player_id, highest_break, matches!inner(game_type)`)
@@ -1138,7 +1080,6 @@ export default function Players() {
           breakMap[pid] = row.highest_break;
       }
 
-      // For month: use score column + player count per match to derive wins/losses/played correctly
       const { data: monthScoreData } = await supabase
         .from("match_players")
         .select(`player_id, score, match_id, matches!inner(game_type, played_at)`)
@@ -1146,7 +1087,6 @@ export default function Players() {
         .eq("matches.game_type", "Snooker")
         .gte("matches.played_at", monthStart());
 
-      // Count players per match to distinguish 2-player vs 3-player
       const matchPlayerCounts = {};
       for (const row of monthScoreData || []) {
         matchPlayerCounts[row.match_id] = (matchPlayerCounts[row.match_id] || 0) + 1;
@@ -1156,20 +1096,20 @@ export default function Players() {
       for (const row of monthScoreData || []) {
         const pid        = row.player_id;
         const isThree    = (matchPlayerCounts[row.match_id] || 2) > 2;
-        const maxWins    = isThree ? 2 : 1;   // max wins possible in this match
+        const maxWins    = isThree ? 2 : 1;
         const winsEarned = row.score ?? 0;
         const lossesEarned = maxWins - winsEarned;
         if (!monthMap[pid]) monthMap[pid] = { wins: 0, losses: 0, played: 0 };
         monthMap[pid].wins   += winsEarned;
         monthMap[pid].losses += lossesEarned;
-        monthMap[pid].played += maxWins;       // +2 for 3-player, +1 for 2-player
+        monthMap[pid].played += maxWins;
       }
 
       const rows = (playerData || []).map(p => ({
         player_id:     p.id,
         name:          p.name,
         snooker_elo:   p.snooker_elo ?? 1200,
-        played:        p.snooker_matches ?? 0,   // correctly +2 per 3-player match
+        played:        p.snooker_matches ?? 0,
         wins:          p.snooker_wins    ?? 0,
         losses:        p.snooker_losses  ?? 0,
         highest_break: breakMap[p.id]   ?? null,
@@ -1178,7 +1118,12 @@ export default function Players() {
         month_played:  monthMap[p.id]?.played ?? 0,
       }));
 
-      const sorted = rows.sort((a, b) => (b.snooker_elo ?? 1200) - (a.snooker_elo ?? 1200));
+      // Sort by win ratio
+      const sorted = [...rows].sort((a, b) => {
+        const ar = winRatio(a.wins, a.played), br = winRatio(b.wins, b.played);
+        if (br !== ar) return br - ar;
+        return b.wins - a.wins;
+      });
       setSnookerRows(sorted);
       setSnookerError(null);
     } catch (e) {
@@ -1206,25 +1151,19 @@ export default function Players() {
     return () => clearInterval(tick);
   }, [lastUpdated]);
 
+  // Sort by win ratio for the selected period
   const displayPool = period === "month"
-    ? [...poolPlayers].sort((a, b) => {
-        const aw = a.month_wins ?? 0, bw = b.month_wins ?? 0;
-        if (bw !== aw) return bw - aw;
-        const ap = aw / ((aw + (a.month_losses ?? 0)) || 1);
-        const bp = bw / ((bw + (b.month_losses ?? 0)) || 1);
-        return bp - ap;
-      })
-    : poolPlayers;
+    ? sortByWinRatio(poolPlayers, "month_wins", "month_losses")
+    : sortByWinRatio(poolPlayers, "total_wins", "total_losses");
 
   const displaySnooker = snookerPeriod === "month"
     ? [...snookerRows].sort((a, b) => {
-        const aw = a.month_wins ?? 0, bw = b.month_wins ?? 0;
-        if (bw !== aw) return bw - aw;
-        const ap = aw / ((aw + (a.month_losses ?? 0)) || 1);
-        const bp = bw / ((bw + (b.month_losses ?? 0)) || 1);
-        return bp - ap;
+        const ar = winRatio(a.month_wins ?? 0, a.month_played ?? 0);
+        const br = winRatio(b.month_wins ?? 0, b.month_played ?? 0);
+        if (br !== ar) return br - ar;
+        return (b.month_wins ?? 0) - (a.month_wins ?? 0);
       })
-    : snookerRows;
+    : [...snookerRows]; // already sorted by win ratio from fetch
 
   const snookerWithObj = displaySnooker.map(r => ({ ...r, playerObj: allPlayers[r.player_id] ?? null }));
 
@@ -1265,7 +1204,6 @@ export default function Players() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            {/* Live badge */}
             <span style={{
               display: "inline-flex", alignItems: "center", gap: 6,
               padding: "4px 10px", borderRadius: 20,
